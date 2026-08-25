@@ -53,9 +53,17 @@ Typical runs produce:
 
 ## Known limits
 
+- **The mined-expression evaluator is not built yet.** Factor mining produces sanitized expression strings (`TS_MEAN($close, 21) / ...`), but no interpreter exists to turn those expressions into signals, so the walk-forward backtest currently evaluates only the fixed 7-factor baseline in `quantaalpha_us/pipeline/signal_generator.py`. Wiring mined expressions into research is the top roadmap item; until then, "LLM-driven" describes the ideation pipeline, not the evaluated strategy.
+- `scripts/sp500_run_factor_mining.py` ships with a placeholder `_dummy_call_model`; plug in a real LLM client before mining.
 - Research quality still depends on the quality and timeliness of external data providers
 - Daily signals and retail-oriented execution assumptions are intentionally conservative and do not represent intraday HFT infrastructure
 - LLM factor generation is bounded and audited, but it still needs human judgment before production use
+
+## Validation notes (2026-08 revision)
+
+- Gate-1 now uses the actual Deflated Sharpe Ratio (Bailey and Lopez de Prado 2014): the probability that the strategy's true Sharpe exceeds the expected maximum Sharpe of `n_trials` zero-skill strategies, adjusted for skewness and kurtosis. The threshold is a probability (default 0.95). The previous implementation was a heuristic penalty and overstated significance.
+- Gate-6 (factor stability) is now measured: per-fold Spearman rank ICs of each baseline factor against realized entry-to-exit returns, top-3 factor sets per fold, mean Jaccard overlap across consecutive folds. It was previously hard-coded to pass.
+- Holdings that drop out of the tradable context (index exit, missing bar) are now explicitly liquidated at the entry open with transaction costs; they previously converted to cash silently with no cost or turnover.
 
 ## Notes
 

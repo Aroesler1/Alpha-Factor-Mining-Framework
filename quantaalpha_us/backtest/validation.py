@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any, Optional
+from statistics import NormalDist
+from typing import Any, Optional, Sequence
 
 import pandas as pd
+
+_NORMAL = NormalDist()
+_EULER_MASCHERONI = 0.5772156649015329
 
 
 def annualized_sharpe(returns: pd.Series, periods_per_year: int = 252) -> float:
@@ -17,6 +21,16 @@ def annualized_sharpe(returns: pd.Series, periods_per_year: int = 252) -> float:
     return float(s.mean()) / std * math.sqrt(periods_per_year)
 
 
+def per_period_sharpe(returns: pd.Series) -> float:
+    s = pd.to_numeric(returns, errors="coerce").dropna()
+    if len(s) < 2:
+        return 0.0
+    std = float(s.std(ddof=1))
+    if std <= 0:
+        return 0.0
+    return float(s.mean()) / std
+
+
 def max_drawdown(returns: pd.Series) -> float:
     s = pd.to_numeric(returns, errors="coerce").fillna(0.0)
     if s.empty:
@@ -27,11 +41,59 @@ def max_drawdown(returns: pd.Series) -> float:
     return float(dd.max()) if len(dd) else 0.0
 
 
-def deflated_sharpe(observed_sharpe: float, n_trials: int, years: float) -> float:
-    trials = max(int(n_trials), 1)
-    safe_years = max(float(years), 1e-9)
-    penalty = math.sqrt(2.0 * math.log(trials)) / math.sqrt(safe_years)
-    return float(observed_sharpe - penalty)
+def probabilistic_sharpe(returns: pd.Series, sr_benchmark: float = 0.0) -> float:
+    """
+    Probabilistic Sharpe Ratio (Bailey & Lopez de Prado 2012): probability the
+    true PER-PERIOD Sharpe exceeds `sr_benchmark`, adjusting for sample size,
+    skewness, and kurtosis.
+    """
+    s = pd.to_numeric(returns, errors="coerce").dropna()
+    n = len(s)
+    if n < 3:
+        return 0.5
+    sr = per_period_sharpe(s)
+    skew = float(s.skew())
+    kurt = float(s.kurt()) + 3.0  # pandas kurt() is excess kurtosis
+    denom = 1.0 - skew * sr + (kurt - 1.0) / 4.0 * sr**2
+    if denom <= 0:
+        return 0.0
+    z = (sr - sr_benchmark) * math.sqrt(n - 1) / math.sqrt(denom)
+    return float(_NORMAL.cdf(z))
+
+
+def expected_max_sharpe(n_trials: int, var_trial_sr: float) -> float:
+    """Expected max PER-PERIOD Sharpe of n_trials zero-skill strategies."""
+    n = max(int(n_trials), 1)
+    if n == 1 or var_trial_sr <= 0:
+        return 0.0
+    sd = math.sqrt(var_trial_sr)
+    z1 = _NORMAL.inv_cdf(1.0 - 1.0 / n)
+    z2 = _NORMAL.inv_cdf(1.0 - 1.0 / (n * math.e))
+    return float(sd * ((1.0 - _EULER_MASCHERONI) * z1 + _EULER_MASCHERONI * z2))
+
+
+def deflated_sharpe(
+    returns: pd.Series,
+    n_trials: int,
+    trial_sharpes: Optional[Sequence[float]] = None,
+) -> float:
+    """
+    Deflated Sharpe Ratio (Bailey & Lopez de Prado 2014): PSR evaluated
+    against the expected max Sharpe of `n_trials` zero-skill strategies.
+    Returns a probability in [0, 1].
+
+    `trial_sharpes` (per-period Sharpes of all configurations tried) sets the
+    cross-trial variance; without it, the sampling variance of a zero-Sharpe
+    estimator over this sample length is used as a conservative floor.
+    """
+    s = pd.to_numeric(returns, errors="coerce").dropna()
+    if trial_sharpes is not None and len(trial_sharpes) >= 2:
+        m = sum(trial_sharpes) / len(trial_sharpes)
+        var_trial = sum((x - m) ** 2 for x in trial_sharpes) / (len(trial_sharpes) - 1)
+    else:
+        var_trial = 1.0 / max(len(s) - 1, 1)
+    sr_star = expected_max_sharpe(n_trials=n_trials, var_trial_sr=var_trial)
+    return probabilistic_sharpe(s, sr_benchmark=sr_star)
 
 
 @dataclass
@@ -66,7 +128,9 @@ class GateReport:
 
 @dataclass
 class BacktestValidationConfig:
-    gate_1_deflated_sharpe: float = 0.5
+    # Gate-1 threshold is a PROBABILITY: DSR = P[true Sharpe beats the
+    # expected max Sharpe of n_trials zero-skill strategies]
+    gate_1_deflated_sharpe: float = 0.95
     gate_2_positive_subperiods: int = 6
     gate_3_max_sector_pnl_share: float = 0.40
     gate_4_max_drawdown: float = 0.25
@@ -106,6 +170,7 @@ class BacktestValidation:
         n_trials: int,
         factor_overlap_score: Optional[float] = None,
         sector_pnl_share: Optional[dict[str, float]] = None,
+        trial_sharpes: Optional[Sequence[float]] = None,
     ) -> GateReport:
         if returns_df.empty or "net_return" not in returns_df.columns:
             empty_gate = GateResult(
@@ -118,9 +183,8 @@ class BacktestValidation:
             return GateReport(passed=False, gates={"GATE-0": empty_gate})
 
         net = pd.to_numeric(returns_df["net_return"], errors="coerce").dropna()
-        years = max(len(net) / 252.0, 1e-9)
         net_sharpe = annualized_sharpe(net)
-        dsr = deflated_sharpe(net_sharpe, n_trials=n_trials, years=years)
+        dsr = deflated_sharpe(net, n_trials=n_trials, trial_sharpes=trial_sharpes)
 
         gates: dict[str, GateResult] = {}
 
@@ -129,7 +193,7 @@ class BacktestValidation:
             passed=dsr > self.config.gate_1_deflated_sharpe,
             threshold=self.config.gate_1_deflated_sharpe,
             value=dsr,
-            details="Deflated Sharpe > threshold",
+            details="P[true Sharpe beats expected max of n_trials noise strategies]",
         )
 
         subperiods = self._split_subperiods(net, n=8)

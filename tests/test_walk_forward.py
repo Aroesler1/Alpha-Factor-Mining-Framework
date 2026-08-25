@@ -76,7 +76,10 @@ def test_walk_forward_runs_with_synthetic_data(tmp_path) -> None:
     assert not result.returns.empty
     assert len(result.folds) > 0
     assert "net_return" in result.returns.columns
-    assert result.factor_overlap_score == 1.0
+    # 3 symbols is below the minimum cross-section for meaningful rank ICs,
+    # so the factor-stability score must be honestly unmeasurable (None),
+    # not the old hard-coded 1.0
+    assert result.factor_overlap_score is None
     assert result.sector_pnl_share is not None
     assert abs(sum(result.sector_pnl_share.values()) - 1.0) < 1e-9
     assert float(result.returns["turnover"].max()) <= 1.0
