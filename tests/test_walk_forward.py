@@ -76,6 +76,19 @@ def test_walk_forward_runs_with_synthetic_data(tmp_path) -> None:
     assert not result.returns.empty
     assert len(result.folds) > 0
     assert "net_return" in result.returns.columns
+
+    # end-to-end with mined expressions: the walk-forward must evaluate them
+    # into the score (previously mined factors never reached the backtest)
+    cfg_mined = dict(cfg)
+    cfg_mined["signals"] = {"mined_expressions": ["RANK(TS_DELTA($close, 5))"]}
+    runner_mined = WalkForwardRunner(cfg_mined)
+    result_mined = runner_mined.run(bars=bars, universe=universe, sector_map=sector_map)
+    assert not result_mined.returns.empty
+    # an extra factor in the score must change at least some daily returns
+    joined = result.returns.merge(
+        result_mined.returns, on="as_of_date", suffixes=("_base", "_mined")
+    )
+    assert (joined["net_return_base"] != joined["net_return_mined"]).any()
     # 3 symbols is below the minimum cross-section for meaningful rank ICs,
     # so the factor-stability score must be honestly unmeasurable (None),
     # not the old hard-coded 1.0

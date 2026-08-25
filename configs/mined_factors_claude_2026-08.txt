@@ -1,0 +1,36 @@
+# Candidate factor expressions mined by Claude Fable 5 (Anthropic), 2026-08.
+# Status: CANDIDATES ONLY. None of these are validated; they must pass
+# scripts/sp500_score_mined_factors.py (IC t-stat + correlation dedup) on
+# research-grade data and then the walk-forward promotion gates before any
+# use. Expressions follow the DSL in quantaalpha_us/factors/, daily OHLCV
+# only, one per line, # comments ignored.
+
+# trend and momentum
+TS_MEAN($close, 21) / (TS_STD($close, 21) + 1e-8)
+RANK(TS_DELTA($close, 5) / (TS_STD($close, 21) * $close + 1e-8))
+RANK(($close / DELAY($close, 21) - 1) - ($close / DELAY($close, 5) - 1))
+RANK(EMA($return, 10) / (TS_STD($return, 21) + 1e-8))
+RANK(TS_DECAY_LINEAR($return, 10))
+RANK(TS_RANK($close, 63))
+
+# reversal
+-RANK(TS_DELTA($close, 3) / (DELAY($close, 3) + 1e-8))
+-RANK(TS_MAX($return, 5))
+-RANK(ABS($close / DELAY($close, 1) - 1))
+
+# volatility and range
+-RANK(TS_STD($return, 21))
+-RANK(($high - $low) / ($close + 1e-8))
+RANK(($close - TS_MIN($low, 21)) / (TS_MAX($high, 21) - TS_MIN($low, 21) + 1e-8))
+-RANK(TS_ARGMAX($close, 21))
+
+# volume and liquidity
+RANK(TS_MEAN($dollar_volume, 5) / (TS_MEAN($dollar_volume, 21) + 1e-8))
+RANK(TS_CORR($close, $volume, 10))
+-RANK(TS_CORR(RANK($close), RANK($volume), 5))
+-RANK(LOG($dollar_volume + 1))
+
+# interactions and conditionals
+IF(TS_MEAN($return, 5) > 0, RANK($volume), -RANK($volume))
+RANK(TS_COV($return, CS_DEMEAN($return), 21))
+RANK(MIN(TS_RANK($volume, 10), TS_RANK($close, 10)))

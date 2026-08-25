@@ -12,6 +12,7 @@ from quantaalpha_us.backtest.costs import TransactionCostModel
 from quantaalpha_us.backtest.universe import SP500Universe
 from quantaalpha_us.pipeline.signal_generator import (
     SignalConfig,
+    active_factor_columns,
     baseline_factor_names,
     build_features,
     select_signals_from_snapshot,
@@ -117,6 +118,10 @@ class WalkForwardRunner:
             max_turnover_daily=float(portfolio.get("max_daily_turnover", 0.20)),
             min_avg_dollar_volume=float(portfolio.get("min_avg_daily_volume_usd", 5_000_000)),
         )
+        signals_cfg = config.get("signals", {}) if isinstance(config.get("signals"), dict) else {}
+        # mined factor expressions (already sanitized upstream) evaluated into
+        # the score alongside the baseline ranks; see signal_generator
+        self.mined_expressions = [str(e) for e in (signals_cfg.get("mined_expressions") or [])]
         retail = config.get("retail_execution", {}) if isinstance(config.get("retail_execution"), dict) else {}
         self.starting_equity = float(retail.get("starting_equity", 250_000.0))
         self.cash_buffer_pct = float(retail.get("cash_buffer_pct", 0.02))
@@ -403,7 +408,7 @@ class WalkForwardRunner:
     ) -> WalkForwardResult:
         data = self._normalize_bars(bars)
         data = data.assign(mom_252=data.groupby("symbol")["adj_close"].pct_change(252))
-        features = build_features(data)
+        features = build_features(data, mined_expressions=self.mined_expressions)
         features_by_date = {
             pd.Timestamp(day).normalize(): group.reset_index(drop=True)
             for day, group in features.groupby("date", sort=False)
@@ -496,7 +501,7 @@ class WalkForwardRunner:
                         active_rets[["symbol", "ret"]], on="symbol", how="inner"
                     )
                     if len(ic_frame) >= 30:
-                        for factor_col in baseline_factor_names():
+                        for factor_col in active_factor_columns(len(self.mined_expressions)):
                             if factor_col in ic_frame.columns:
                                 ic = ic_frame[factor_col].corr(ic_frame["ret"], method="spearman")
                                 if pd.notna(ic):
