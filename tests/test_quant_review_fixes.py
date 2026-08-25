@@ -35,7 +35,8 @@ def _runner() -> WalkForwardRunner:
 def test_psr_of_noise_is_near_half() -> None:
     rng = np.random.default_rng(0)
     r = pd.Series(rng.normal(0.0, 0.01, size=5000))
-    assert 0.35 < probabilistic_sharpe(r) < 0.65
+    r = r - r.mean()  # exactly zero Sharpe; PSR is sharp in n so demean explicitly
+    assert abs(probabilistic_sharpe(r) - 0.5) < 0.02
 
 
 def test_expected_max_sharpe_monotone_in_trials() -> None:
