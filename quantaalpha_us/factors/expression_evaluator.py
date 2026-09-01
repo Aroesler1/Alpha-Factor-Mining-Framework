@@ -50,21 +50,27 @@ def build_field_panels(bars: pd.DataFrame) -> dict[str, pd.DataFrame]:
     adj_close/volume/dollar_volume. Output keys are the `$field` names the
     evaluator understands.
     """
-    work = bars.copy()
-    work["date"] = pd.to_datetime(work["date"], errors="coerce").dt.normalize()
-    work["symbol"] = work["symbol"].astype(str).str.upper()
+    work = bars.assign(
+        date=pd.to_datetime(bars["date"], errors="coerce").dt.normalize(),
+        symbol=bars["symbol"].astype(str).str.upper(),
+    )
     work = work.dropna(subset=["date", "symbol"]).sort_values(["date", "symbol"])
 
     panels: dict[str, pd.DataFrame] = {}
     for col in ("open", "high", "low", "close", "adj_close", "volume", "dollar_volume"):
         if col in work.columns:
-            panels[col] = work.pivot_table(index="date", columns="symbol", values=col, aggfunc="last")
+            panel = work.pivot_table(index="date", columns="symbol", values=col, aggfunc="last")
+            # parquet commonly carries pandas nullable dtypes (Float64/Int64);
+            # numpy ufuncs and np.where raise "boolean value of NA is ambiguous"
+            # on those, so pin every panel to plain float64 with NaN missings
+            panels[col] = panel.astype("float64")
 
     # research convention: $close means the adjusted close when available
     if "adj_close" in panels:
         panels["close"] = panels["adj_close"]
     if "close" in panels:
-        panels["return"] = panels["close"].pct_change()
+        # fill_method=None: never forward-fill across listing gaps before differencing
+        panels["return"] = panels["close"].pct_change(fill_method=None)
     if "dollar_volume" not in panels and {"close", "volume"} <= panels.keys():
         panels["dollar_volume"] = panels["close"] * panels["volume"]
     return panels

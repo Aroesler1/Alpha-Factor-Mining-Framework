@@ -146,10 +146,50 @@ def test_select_uncorrelated_drops_semantic_duplicates():
         "RANK(TS_STD($close, 21))",
     ]
     report, signals = score_expressions(bars, exprs, min_cross_section=20)
-    # force all candidates past the t-stat gate so only dedup is under test
-    selected = select_uncorrelated(report, signals, min_abs_tstat=0.0, max_abs_corr=0.7)
+    # force all candidates past the t-stat and turnover gates so only dedup is under test
+    selected = select_uncorrelated(
+        report, signals, min_abs_tstat=0.0, max_abs_corr=0.7, min_autocorr=0.0
+    )
     assert len(selected) == 2
-    assert "RANK(TS_STD($close, 21))" in selected
+    # emitted expressions are sign-corrected, so match on the underlying formula
+    assert any("RANK(TS_STD($close, 21))" in s for s in selected)
+
+
+def test_selection_sign_corrects_negative_ic_factors():
+    """A factor whose IC is negative must be emitted negated.
+
+    The backtest averages mined factors into a score where higher means better,
+    so emitting a negative-IC factor unchanged would enter it backwards.
+    """
+    bars = _bars(n_days=250, symbols=tuple(f"S{i:02d}" for i in range(40)))
+    expr = "RANK(TS_DELTA($close, 5))"
+    report, signals = score_expressions(bars, [expr], min_cross_section=20)
+
+    score = report.scores[0]
+    selected = select_uncorrelated(
+        report, signals, min_abs_tstat=0.0, max_abs_corr=1.0, min_autocorr=0.0
+    )
+    assert len(selected) == 1
+    if score.mean_ic < 0:
+        assert selected[0] == f"-({expr})"
+    else:
+        assert selected[0] == expr
+
+
+def test_selection_drops_untradeably_fast_signals():
+    """A signal with near-zero lag-1 autocorrelation turns over daily and dies to costs."""
+    bars = _bars(n_days=250, symbols=tuple(f"S{i:02d}" for i in range(40)))
+    # one persistent signal, one that re-randomises every day
+    exprs = ["TS_MEAN($close, 21)", "RANK(ABS($close / DELAY($close, 1) - 1))"]
+    report, signals = score_expressions(bars, exprs, min_cross_section=20)
+
+    fast = next(s for s in report.scores if s.expression == exprs[1])
+    assert fast.signal_autocorr < 0.2  # fixture sanity: this really is fast
+
+    selected = select_uncorrelated(
+        report, signals, min_abs_tstat=0.0, max_abs_corr=1.0, min_autocorr=0.2
+    )
+    assert all(exprs[1] not in s for s in selected)
 
 
 def test_invalid_expression_reported_not_raised():

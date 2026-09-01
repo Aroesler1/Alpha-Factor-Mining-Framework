@@ -152,26 +152,43 @@ def select_uncorrelated(
     min_abs_tstat: float = 2.0,
     max_abs_corr: float = 0.7,
     max_factors: int = 10,
+    min_autocorr: float = 0.2,
 ) -> list[str]:
     """Greedy selection by |IC t-stat| with a pairwise signal-correlation cap.
 
     String-level dedup upstream cannot catch semantic duplicates (an LLM
     happily restates one idea five ways); correlation of the realized signal
     panels can.
+
+    Two guards that matter once this runs on real data:
+
+    - Selection ranks on |IC| but the backtest averages mined factors into a
+      score where higher means better, so a negative-IC factor would enter
+      backwards and actively degrade the composite. Emitted expressions are
+      sign-corrected: a factor with mean IC < 0 is emitted negated.
+    - `min_autocorr` drops signals that barely persist day to day. A lag-1
+      signal autocorrelation near zero means near-total daily turnover, which
+      transaction costs destroy regardless of how significant the IC looks.
     """
     candidates = [
         s for s in report.scores
-        if s.error is None and np.isfinite(s.ic_tstat) and abs(s.ic_tstat) >= min_abs_tstat
+        if s.error is None
+        and np.isfinite(s.ic_tstat)
+        and abs(s.ic_tstat) >= min_abs_tstat
+        and not (np.isfinite(s.signal_autocorr) and s.signal_autocorr < min_autocorr)
     ]
     candidates.sort(key=lambda s: abs(s.ic_tstat), reverse=True)
 
     selected: list[str] = []
+    # correlation is compared on the ORIGINAL signals (negation cannot change
+    # |corr|), while `selected` carries the sign-corrected expressions we emit
+    kept_originals: list[str] = []
     for cand in candidates:
         if len(selected) >= max_factors:
             break
         sig = signals[cand.expression]
         redundant = False
-        for kept in selected:
+        for kept in kept_originals:
             other = signals[kept]
             common = sig.columns.intersection(other.columns)
             a = sig[common].to_numpy(dtype=float).ravel()
@@ -183,7 +200,10 @@ def select_uncorrelated(
                     redundant = True
                     break
         if not redundant:
-            selected.append(cand.expression)
+            # orient the emitted factor so higher rank = higher expected return
+            oriented = cand.expression if cand.mean_ic >= 0 else f"-({cand.expression})"
+            selected.append(oriented)
+            kept_originals.append(cand.expression)
 
     report.selected = selected
     return selected
