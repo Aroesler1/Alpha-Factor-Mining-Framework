@@ -23,6 +23,7 @@ import argparse
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -31,6 +32,10 @@ for _p in (str(US_ROOT), str(US_ROOT.parent)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+from quantaalpha_us.factors.experiment_trace import (  # noqa: E402
+    ExperimentTrace,
+    TraceRecord,
+)
 from quantaalpha_us.factors.factor_research import score_expressions, select_uncorrelated  # noqa: E402
 
 
@@ -52,6 +57,8 @@ def main() -> int:
     parser.add_argument("--max-abs-corr", type=float, default=0.7)
     parser.add_argument("--max-factors", type=int, default=10)
     parser.add_argument("--min-cross-section", type=int, default=30)
+    parser.add_argument("--trace", type=Path, default=None,
+                        help="append-only JSONL trace of every hypothesis considered")
     args = parser.parse_args()
 
     bars_path = Path(args.bars)
@@ -71,6 +78,37 @@ def main() -> int:
         max_abs_corr=args.max_abs_corr,
         max_factors=args.max_factors,
     )
+
+    # Record every hypothesis and its verdict, failures included. The trace is
+    # what makes a mining run auditable, and its distinct-expression count is
+    # the honest multiple-testing denominator -- counting only survivors
+    # understates the search by exactly the number of rejections.
+    if args.trace is not None:
+        trace = ExperimentTrace(args.trace)
+        selected_set = set(selected)
+        for score in report.scores:
+            if score.error is not None:
+                verdict = "rejected_sanitizer"
+            elif score.expression in selected_set or f"-({score.expression})" in selected_set:
+                verdict = "selected"
+            elif not np.isfinite(score.ic_tstat) or abs(score.ic_tstat) < args.min_abs_tstat:
+                verdict = "rejected_score"
+            else:
+                verdict = "rejected_correlated"
+            trace.append(TraceRecord(
+                expression=score.expression,
+                verdict=verdict,
+                mean_ic=None if not np.isfinite(score.mean_ic) else float(score.mean_ic),
+                ic_tstat=None if not np.isfinite(score.ic_tstat) else float(score.ic_tstat),
+                signal_autocorr=(None if not np.isfinite(score.signal_autocorr)
+                                 else float(score.signal_autocorr)),
+                coverage=float(score.coverage),
+                error=score.error,
+            ))
+        print(f"\ntrace -> {args.trace}")
+        print(f"  verdicts: {trace.summary()}")
+        print(f"  distinct hypotheses ever tried: {trace.n_hypotheses()} "
+              f"(use this as the DSR trial count, not {len(selected)})")
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
