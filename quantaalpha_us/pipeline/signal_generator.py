@@ -32,7 +32,12 @@ def _rank_by_date(series: pd.Series, dates: pd.Series, ascending: bool = True) -
     return out
 
 
-def build_features(bars: pd.DataFrame) -> pd.DataFrame:
+def active_factor_columns(n_mined: int) -> list[str]:
+    """Factor columns entering the score: baseline ranks plus mined ranks."""
+    return list(BASELINE_FACTOR_COLUMNS) + [f"r_mined_{i:02d}" for i in range(int(n_mined))]
+
+
+def build_features(bars: pd.DataFrame, mined_expressions: Optional[list[str]] = None) -> pd.DataFrame:
     required_cols = {"date", "symbol", "close"}
     missing = required_cols - set(bars.columns)
     if missing:
@@ -82,7 +87,30 @@ def build_features(bars: pd.DataFrame) -> pd.DataFrame:
     df["r_volume_accel"] = _rank_by_date(df["volume_accel"], df["date"], ascending=True)
     df["r_range"] = _rank_by_date(df["range"], df["date"], ascending=False)
 
-    df["score"] = df[BASELINE_FACTOR_COLUMNS].mean(axis=1, skipna=True)
+    factor_cols = list(BASELINE_FACTOR_COLUMNS)
+
+    # Mined factors: sanitized expressions evaluated over the field panels,
+    # cross-sectionally ranked per date, and averaged into the score on the
+    # same footing as the baseline ranks. Signals here use data through the
+    # feature date only (the evaluator's operators are all backward-looking),
+    # matching the T-close -> T+1-open execution convention.
+    if mined_expressions:
+        from quantaalpha_us.factors.expression_evaluator import (
+            ExpressionEvaluator,
+            build_field_panels,
+        )
+
+        panels = build_field_panels(df)
+        evaluator = ExpressionEvaluator(panels)
+        pair_index = pd.MultiIndex.from_frame(df[["date", "symbol"]])
+        for i, expr in enumerate(mined_expressions):
+            col = f"r_mined_{i:02d}"
+            signal = evaluator.evaluate(str(expr))
+            ranked = signal.rank(axis=1, pct=True)
+            df[col] = ranked.stack().reindex(pair_index).to_numpy()
+            factor_cols.append(col)
+
+    df["score"] = df[factor_cols].mean(axis=1, skipna=True)
     return df
 
 

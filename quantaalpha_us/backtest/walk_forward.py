@@ -12,6 +12,7 @@ from quantaalpha_us.backtest.costs import TransactionCostModel
 from quantaalpha_us.backtest.universe import SP500Universe
 from quantaalpha_us.pipeline.signal_generator import (
     SignalConfig,
+    active_factor_columns,
     baseline_factor_names,
     build_features,
     select_signals_from_snapshot,
@@ -117,6 +118,10 @@ class WalkForwardRunner:
             max_turnover_daily=float(portfolio.get("max_daily_turnover", 0.20)),
             min_avg_dollar_volume=float(portfolio.get("min_avg_daily_volume_usd", 5_000_000)),
         )
+        signals_cfg = config.get("signals", {}) if isinstance(config.get("signals"), dict) else {}
+        # mined factor expressions (already sanitized upstream) evaluated into
+        # the score alongside the baseline ranks; see signal_generator
+        self.mined_expressions = [str(e) for e in (signals_cfg.get("mined_expressions") or [])]
         retail = config.get("retail_execution", {}) if isinstance(config.get("retail_execution"), dict) else {}
         self.starting_equity = float(retail.get("starting_equity", 250_000.0))
         self.cash_buffer_pct = float(retail.get("cash_buffer_pct", 0.02))
@@ -208,6 +213,25 @@ class WalkForwardRunner:
         return folds
 
     @staticmethod
+    def _overlap_score(factor_sets: list[set[str]]) -> Optional[float]:
+        """
+        Gate-6 stability score: mean Jaccard overlap of consecutive folds'
+        top-factor sets. Needs at least two folds with measurable ICs;
+        otherwise returns None so the gate fails honestly instead of passing
+        on a constant.
+        """
+        if len(factor_sets) < 2:
+            return None
+        overlaps = [
+            len(a & b) / len(a | b)
+            for a, b in zip(factor_sets, factor_sets[1:])
+            if len(a | b) > 0
+        ]
+        if not overlaps:
+            return None
+        return float(sum(overlaps) / len(overlaps))
+
+    @staticmethod
     def _normalize_bars(bars: pd.DataFrame) -> pd.DataFrame:
         work = bars.copy().assign(
             date=pd.to_datetime(bars["date"], errors="coerce").dt.normalize(),
@@ -270,6 +294,41 @@ class WalkForwardRunner:
             target_weight=context["symbol"].map(target_map).fillna(0.0),
         )
 
+        # Explicitly liquidate holdings that dropped out of today's context
+        # (index exit, missing features). They previously became cash with no
+        # sell trade, no cost, and no turnover. Sell at the entry open when a
+        # bar exists; with no bar at all the position still converts at its
+        # last mark, which is the best available under daily data.
+        context_syms = set(context["symbol"])
+        forced_liquidations: set[str] = set()
+        if previous_shares and not bars_entry.empty:
+            entry_px_map = {
+                str(r.symbol).upper(): float(r.open)
+                for r in bars_entry[["symbol", "open"]].itertuples(index=False)
+                if pd.notna(r.open) and float(r.open) > 0
+            }
+            extra_rows = []
+            for held_sym, held_shares in previous_shares.items():
+                s = str(held_sym).upper()
+                if s in context_syms or held_shares <= 0:
+                    continue
+                px = entry_px_map.get(s)
+                if px is None:
+                    continue
+                extra_rows.append(
+                    {
+                        "symbol": s,
+                        "adv20": float("nan"),
+                        "vol_21d": float("nan"),
+                        "entry_open": px,
+                        "exit_open": px,
+                        "target_weight": 0.0,
+                    }
+                )
+                forced_liquidations.add(s)
+            if extra_rows:
+                context = pd.concat([context, pd.DataFrame(extra_rows)], ignore_index=True)
+
         current_weights: dict[str, float] = {}
         target_weights: dict[str, float] = {}
         new_shares: dict[str, float] = {}
@@ -292,7 +351,7 @@ class WalkForwardRunner:
             trade_cap = None
             if adv20 is not None and adv20 > 0 and self.max_participation_rate > 0:
                 trade_cap = adv20 * self.max_participation_rate
-            if abs(delta_value) < self.min_trade_dollars:
+            if abs(delta_value) < self.min_trade_dollars and sym not in forced_liquidations:
                 adjusted_target_value = current_value
             elif trade_cap is not None and trade_cap > 0 and abs(delta_value) > trade_cap:
                 adjusted_target_value = max(0.0, current_value + math.copysign(trade_cap, delta_value))
@@ -349,7 +408,7 @@ class WalkForwardRunner:
     ) -> WalkForwardResult:
         data = self._normalize_bars(bars)
         data = data.assign(mom_252=data.groupby("symbol")["adj_close"].pct_change(252))
-        features = build_features(data)
+        features = build_features(data, mined_expressions=self.mined_expressions)
         features_by_date = {
             pd.Timestamp(day).normalize(): group.reset_index(drop=True)
             for day, group in features.groupby("date", sort=False)
@@ -371,6 +430,8 @@ class WalkForwardRunner:
             previous_weights: Optional[dict[str, float]] = None
             previous_shares: dict[str, float] = {}
             current_equity = self.starting_equity
+            # per-fold daily rank ICs per factor, for the gate-6 stability score
+            fold_factor_ics: dict[str, list[float]] = {}
 
             for as_of in fold_test_dates:
                 active = universe.get_members(as_of)
@@ -387,7 +448,6 @@ class WalkForwardRunner:
                 )
                 if signal_df.empty:
                     continue
-                factor_sets.append(set(baseline_factor_names()))
 
                 entry_date = self._shift_trading_days(dates, as_of, self.signal_lag_days)
                 exit_date = self._shift_trading_days(dates, entry_date, self.label_horizon_days) if entry_date is not None else None
@@ -433,6 +493,20 @@ class WalkForwardRunner:
                 active_rets = self._open_return_for_symbols(bars_entry, bars_exit, active)
                 eqw_ret = float(active_rets["ret"].mean()) * (1.0 - self.cash_buffer_pct) if not active_rets.empty else float("nan")
 
+                # Daily rank IC of each baseline factor against realized
+                # entry-open -> exit-open returns over the active universe
+                # (feeds the gate-6 factor-stability score).
+                if not active_rets.empty and not feature_snapshot.empty:
+                    ic_frame = feature_snapshot.merge(
+                        active_rets[["symbol", "ret"]], on="symbol", how="inner"
+                    )
+                    if len(ic_frame) >= 30:
+                        for factor_col in active_factor_columns(len(self.mined_expressions)):
+                            if factor_col in ic_frame.columns:
+                                ic = ic_frame[factor_col].corr(ic_frame["ret"], method="spearman")
+                                if pd.notna(ic):
+                                    fold_factor_ics.setdefault(factor_col, []).append(float(ic))
+
                 mom_ret = float("nan")
                 latest = bars_by_date.get(pd.Timestamp(as_of).normalize(), pd.DataFrame())
                 if not latest.empty and "mom_252" in latest.columns:
@@ -465,6 +539,12 @@ class WalkForwardRunner:
                 previous_weights = curr_weights
                 previous_shares = current_shares
 
+            # Fold-level factor set: top-3 factors by |mean daily IC|
+            if fold_factor_ics:
+                mean_ics = {f: sum(v) / len(v) for f, v in fold_factor_ics.items()}
+                top = set(sorted(mean_ics, key=lambda f: abs(mean_ics[f]), reverse=True)[:3])
+                factor_sets.append(top)
+
         returns = pd.DataFrame(records)
         if returns.empty:
             raise RuntimeError("Walk-forward run produced no test observations")
@@ -489,7 +569,7 @@ class WalkForwardRunner:
             if total_sector_abs > 0
             else None
         )
-        factor_overlap_score = 1.0 if factor_sets else None
+        factor_overlap_score = self._overlap_score(factor_sets)
         result = WalkForwardResult(
             returns=returns,
             folds=folds,
