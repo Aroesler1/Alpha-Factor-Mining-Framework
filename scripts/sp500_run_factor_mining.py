@@ -276,7 +276,13 @@ def main() -> None:
             timeout_seconds=int(llm_cfg.get("request_timeout_seconds", 120)),
         )
     else:
-        call_model = _dummy_call_model
+        # Real backend: Claude Code CLI on a subscription, or the Anthropic SDK
+        # with an API key. Selection and its failure modes live in llm_client;
+        # there is deliberately no stub fallback, because a miner that silently
+        # returns canned factors is worse than one that refuses to run.
+        from quantaalpha_us.factors.llm_client import make_call_model
+
+        call_model = make_call_model(llm_cfg.get("backend"))
 
     valid, stats = runtime.run(
         prompts=prompts,
