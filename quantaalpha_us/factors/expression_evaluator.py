@@ -56,8 +56,18 @@ def build_field_panels(bars: pd.DataFrame) -> dict[str, pd.DataFrame]:
     )
     work = work.dropna(subset=["date", "symbol"]).sort_values(["date", "symbol"])
 
+    # Fundamental fields are optional: present only when the caller passed a bar
+    # frame augmented by factors.fundamentals. They are already point-in-time
+    # (stamped from the Compustat report date, not the period end), so they
+    # pivot exactly like a price field with no further alignment.
+    fundamental_fields = (
+        "roa", "roe", "operating_margin", "leverage", "asset_turnover",
+        "book_per_share", "earnings_per_share", "accrual_gap",
+    )
+
     panels: dict[str, pd.DataFrame] = {}
-    for col in ("open", "high", "low", "close", "adj_close", "volume", "dollar_volume"):
+    for col in ("open", "high", "low", "close", "adj_close", "volume",
+                "dollar_volume") + fundamental_fields:
         if col in work.columns:
             panel = work.pivot_table(index="date", columns="symbol", values=col, aggfunc="last")
             # parquet commonly carries pandas nullable dtypes (Float64/Int64);

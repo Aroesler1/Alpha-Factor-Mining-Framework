@@ -19,3 +19,6 @@ data/results/
 *.sqlite
 *.sqlite3
 *.log
+
+data/us_equities/
+data/factor_research*/

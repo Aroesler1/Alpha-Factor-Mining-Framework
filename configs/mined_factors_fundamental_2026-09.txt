@@ -1,0 +1,29 @@
+# Fundamental factor candidates, 2026-09.
+# These become expressible only once factors.fundamentals attaches point-in-time
+# Compustat fields to the bar panel. Every field is stamped from the report date
+# (rdq) plus a lag, never the period end, so none of these can see a figure
+# before the market could.
+#
+# Status: CANDIDATES. Each must clear IC scoring and then the walk-forward gates.
+
+# profitability
+RANK($roa)
+RANK($roe)
+RANK($operating_margin)
+
+# value: book and earnings against price
+RANK($book_per_share / ($close + 1e-8))
+RANK($earnings_per_share / ($close + 1e-8))
+
+# quality and balance-sheet risk
+-RANK($leverage)
+RANK($asset_turnover)
+-RANK($accrual_gap)
+
+# change-based: fundamentals move slowly, so the DELTA carries the news
+RANK(TS_DELTA($roa, 63))
+RANK(TS_DELTA($operating_margin, 63))
+
+# interactions with price behaviour
+RANK($roa) - RANK(TS_STD($return, 21))
+RANK($book_per_share / ($close + 1e-8)) - RANK(TS_MEAN($return, 63))
