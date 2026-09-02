@@ -22,3 +22,6 @@ data/results/
 
 data/us_equities/
 data/factor_research*/
+
+# macOS
+.DS_Store
