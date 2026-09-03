@@ -80,6 +80,19 @@ class ExpressionSanitizer:
         "bound",
     }
 
+    # The evaluator resolves fields only through a leading "$" (see
+    # expression_evaluator's module docstring). A bare `close` is not a field to
+    # it, it is an unknown identifier, so an expression using bare names parses
+    # here and then dies at evaluation time. These names exist to make the
+    # resulting error say which field was meant.
+    KNOWN_FIELDS = {
+        "open", "high", "low", "close", "adj_close", "volume",
+        "dollar_volume", "return",
+        # fundamentals, per build_field_panels
+        "roa", "roe", "operating_margin", "leverage", "asset_turnover",
+        "book_per_share", "earnings_per_share", "accrual_gap",
+    }
+
     BLOCKED_TOKENS = (
         "import ",
         "exec(",
@@ -155,4 +168,44 @@ class ExpressionSanitizer:
             if func not in self.allowed_functions and not func.startswith("field_"):
                 errors.append(f"Unknown function: {func}")
 
+        errors.extend(self._identifier_errors(cleaned))
+
         return SanitizeResult(valid=len(errors) == 0, cleaned=cleaned, errors=errors)
+
+    def _identifier_errors(self, cleaned: str) -> list[str]:
+        """Reject bare field references, which the evaluator cannot resolve.
+
+        Checking function names alone let `TS_MEAN(close, 10)` through as valid;
+        the evaluator then raised "Unknown identifier: close" only once the
+        expression reached scoring. A gate that accepts what the next stage
+        rejects is worse than no gate, because the failure surfaces far from its
+        cause -- an LLM asked for factors without a "$" convention in the prompt
+        produced 26 of 26 expressions that passed here and evaluated none.
+        """
+        errors: list[str] = []
+        seen: set[str] = set()
+        for match in re.finditer(r"[A-Za-z_][A-Za-z0-9_]*", cleaned):
+            name = match.group(0)
+            rest = cleaned[match.end():]
+            if rest.lstrip().startswith("("):
+                continue  # a function call, already checked above
+            prev = cleaned[match.start() - 1] if match.start() > 0 else ""
+            if prev.isdigit() or prev == ".":
+                # the "e" of a float literal such as 1e-8, not an identifier
+                continue
+            if match.start() > 0 and cleaned[match.start() - 1] == "$":
+                if name not in self.KNOWN_FIELDS and name not in seen:
+                    seen.add(name)
+                    errors.append(f"Unknown field: ${name}")
+                continue
+            if name in seen:
+                continue
+            seen.add(name)
+            if name in self.KNOWN_FIELDS:
+                errors.append(
+                    f"Field '{name}' must be written as '${name}'; "
+                    "the evaluator resolves fields only through a leading '$'"
+                )
+            else:
+                errors.append(f"Unknown identifier: {name}")
+        return errors

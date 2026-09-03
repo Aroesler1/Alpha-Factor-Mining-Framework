@@ -3,7 +3,9 @@ You are generating quantitative factors for US large-cap equities.
 Context:
 - Universe: S&P 500 point-in-time constituents (~500 symbols)
 - Market: US equities, NYSE/Nasdaq, timezone America/New_York
-- Data available: daily OHLCV only (open, high, low, close, adj_close, volume, dollar_volume)
+- Data available: daily OHLCV only. Reference every field with a leading `$`:
+  $open $high $low $close $adj_close $volume $dollar_volume $return
+  A bare name like `close` is NOT a field and will be rejected.
 - No fundamental features in v1
 - Sector classification: GICS 11 sectors
 - Execution assumption: signal computed after close on day T, traded at open on T+1
@@ -18,11 +20,18 @@ Hard constraints:
 - Prefer simple robust expressions over clever complexity
 - Keep each expression under 220 characters
 
+Syntax:
+- Operators are function calls: TS_MEAN, TS_STD, TS_MAX, TS_MIN, TS_RANK,
+  TS_DELTA, TS_CORR, TS_COV, TS_SUM, TS_DECAY_LINEAR, EMA, DELAY, DELTA,
+  RANK, ZSCORE, CS_RANK, CS_ZSCORE, CS_DEMEAN, IF, IF_ELSE, MIN, MAX, ABS,
+  SIGN, LOG, LN, SQRT, POWER, BOUND, COUNT
+- Guard every division with a small epsilon, e.g. `/ (TS_STD($close, 21) + 1e-8)`
+- Example of a well-formed expression:
+  -RANK(TS_CORR(RANK($close), RANK($volume), 5))
+
 Return format:
-- Return valid JSON only
-- Top-level object must be exactly: {"factors":["expr1","expr2",...]}
-- `factors` must be an array of expression strings only
-- Do not include any keys besides `factors`
+- Return valid JSON only, matching the supplied JSON schema
+- Each factor is an object with an `expression` and a one-line `hypothesis`
 
 Diversity goals:
 - Cover momentum, reversal, volatility, liquidity, volume acceleration, range, and interaction effects

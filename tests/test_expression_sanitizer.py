@@ -27,3 +27,72 @@ def test_length_rejected() -> None:
     result = sanitizer.sanitize("TS_MEAN($close, 20)")
     assert not result.valid
     assert any("Expression too long" in e for e in result.errors)
+
+
+def test_bare_field_rejected_with_actionable_message():
+    """A gate that passes what the evaluator rejects is worse than no gate.
+
+    The evaluator resolves fields only through a leading "$", so TS_MEAN(close,
+    10) raises "Unknown identifier: close" at scoring time. Checking function
+    names alone let it through: an LLM given a prompt with no "$" convention
+    produced 26 of 26 expressions that passed this gate and evaluated none.
+    """
+    result = ExpressionSanitizer().sanitize("TS_MEAN(close, 10)")
+    assert not result.valid
+    assert any("$close" in e for e in result.errors)
+
+
+def test_dollar_prefixed_known_fields_accepted():
+    s = ExpressionSanitizer()
+    assert s.sanitize("TS_MEAN($close, 10)").valid
+    assert s.sanitize("ts_mean($adj_close, 10)").valid
+    assert s.sanitize("-RANK(TS_CORR(RANK($close), RANK($volume), 5))").valid
+
+
+def test_unknown_dollar_field_rejected():
+    result = ExpressionSanitizer().sanitize("TS_MEAN($vwap, 10)")
+    assert not result.valid
+    assert any("$vwap" in e for e in result.errors)
+
+
+def test_scientific_notation_is_not_an_identifier():
+    """The `e` of 1e-8 is a float literal, not a bare field reference.
+
+    Guarding divisions with an epsilon is idiomatic here, so a false positive on
+    it would reject most well-formed expressions.
+    """
+    result = ExpressionSanitizer().sanitize("TS_MEAN($close, 21) / (TS_STD($close, 21) + 1e-8)")
+    assert result.valid, result.errors
+    assert ExpressionSanitizer().sanitize("$close / (1.5e-9 + $volume)").valid
+
+
+def test_gate_agrees_with_evaluator_on_shipped_factors():
+    """Every expression this gate accepts must actually evaluate."""
+    import numpy as np
+    import pandas as pd
+    from quantaalpha_us.factors.expression_evaluator import ExpressionEvaluator
+
+    dates = pd.date_range("2024-01-01", periods=60)
+    syms = ["A", "B", "C"]
+    rng = np.random.default_rng(0)
+    panels = {
+        f: pd.DataFrame(rng.random((60, 3)) + 100, index=dates, columns=syms).astype("float64")
+        for f in ("open", "high", "low", "close", "adj_close", "volume", "dollar_volume", "return")
+    }
+    evaluator = ExpressionEvaluator(panels)
+    sanitizer = ExpressionSanitizer()
+    for expression in (
+        "TS_MEAN($close, 21) / (TS_STD($close, 21) + 1e-8)",
+        "-RANK(TS_CORR(RANK($close), RANK($volume), 5))",
+        "-RANK(TS_MAX($return, 5))",
+        "TS_MEAN(close, 10)",
+        "ts_mean(adj_close, 10)",
+        "TS_MEAN($vwap, 10)",
+    ):
+        accepted = sanitizer.sanitize(expression).valid
+        try:
+            evaluator.evaluate(expression)
+            evaluates = True
+        except Exception:
+            evaluates = False
+        assert accepted == evaluates, f"gate/evaluator disagree on {expression!r}"
