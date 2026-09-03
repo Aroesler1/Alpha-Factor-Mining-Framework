@@ -46,26 +46,6 @@ def _load_dotenv(path: Path) -> None:
             os.environ[key] = value.strip().strip('"').strip("'")
 
 
-def _dummy_call_model(model: str, prompt: str) -> Any:
-    # Placeholder runtime hook: replace with your actual LLM client call.
-    lines = [
-        "TS_MEAN($close, 21) / (TS_STD($close, 21) + 1e-8)",
-        "TS_SUM($return, 5) * (TS_MEAN($volume, 5) / (TS_MEAN($volume, 20) + 1e-8))",
-        "import os",  # intentionally invalid to validate sanitizer flow
-    ]
-    return {
-        "choices": [
-            {
-                "message": {
-                    "content": json.dumps({"factors": lines}),
-                }
-            }
-        ],
-        "usage": {"total_tokens": 128},
-        "model": model,
-    }
-
-
 def _probe_available_models(api_key: str, base_url: str) -> set[str] | None:
     endpoint = base_url.rstrip("/") + "/models"
     req = Request(

@@ -83,10 +83,25 @@ A Deflated Sharpe computed against the survivors understates the search by exact
 python scripts/sp500_score_mined_factors.py --bars <panel> --trace data/trace.jsonl
 ```
 
+## Data source
+
+Market data comes from **CRSP via WRDS**. Every call site this repo actually
+uses — daily bars, bulk daily bars, and the ticker mapping — is served by
+`quantaalpha_us/data/crsp_client.py`, which also carries PERMNO identity,
+delisting returns and point-in-time membership that a plain vendor EOD feed
+does not.
+
+`build_market_data_client(source="auto")` prefers CRSP whenever
+`CRSP_USERNAME`/`CRSP_API_KEY` are set and falls back to EODHD only if they are
+not. EODHD is retained as a fallback so the pipeline is runnable without a WRDS
+entitlement, but it needs your own token and is not used here.
+
+CRSP data is licensed and is deliberately not committed: the repo ships code,
+derived factor scores and figures, not raw vendor data.
+
 ## Known limits
 
-- Mined-factor results depend on scoring against research-grade data (CRSP/EODHD); the shipped candidate set is unscored until that runs.
-- `scripts/sp500_run_factor_mining.py` ships with a placeholder `_dummy_call_model`; plug in a real LLM client before mining (or use the checked-in Claude-generated candidate file directly).
+- Factor quality, not tooling, is the binding limit: mean ICs of 0.003-0.010 are weak, and the large t-statistics come from 6,517 trading days rather than effect size.
 - Research quality still depends on the quality and timeliness of external data providers
 - Daily signals and retail-oriented execution assumptions are intentionally conservative and do not represent intraday HFT infrastructure
 - LLM factor generation is bounded and audited, but it still needs human judgment before production use
@@ -204,7 +219,7 @@ Beyond LLM usage, this project uses and demonstrates familiarity with:
 - `pandas` for feature engineering, panel manipulation, and research outputs
 - parquet-based data artifacts for reproducible local research datasets
 - CRSP through WRDS for research-grade historical membership and price data
-- EODHD as an alternative market-data vendor and fallback path
+- EODHD as an optional alternative market-data vendor and fallback path
 - Alpaca REST APIs for paper and live execution
 - YAML-based configuration for research, mining, and trading profiles
 - CLI-oriented orchestration through standalone Python entrypoints
@@ -250,7 +265,7 @@ It is useful operationally, but it is not treated as a substitute for true histo
 
 At the current stage, the repo supports:
 
-- CRSP-first market data, with EODHD fallback
+- CRSP market data via WRDS (EODHD remains as an optional fallback for users without WRDS)
 - historical or approximate S&P 500 membership construction
 - daily bar backfill and coverage reporting
 - baseline signal generation
@@ -308,7 +323,7 @@ Typical environment configuration includes:
 
 - `CRSP_USERNAME`
 - `CRSP_API_KEY`
-- `EODHD_API_TOKEN`
+- `EODHD_API_TOKEN` *(optional; only needed for the EODHD fallback)*
 - `OPENAI_BASE_URL`
 - `OPENAI_API_KEY`
 - `ALPACA_PAPER_API_KEY`
@@ -348,7 +363,7 @@ Source selection can also be made explicit:
 
 ```bash
 python scripts/sp500_build_membership.py --source crsp
-python scripts/sp500_build_membership.py --source eodhd
+python scripts/sp500_build_membership.py --source eodhd   # needs your own EODHD token
 python scripts/sp500_build_membership_approx.py
 ```
 
