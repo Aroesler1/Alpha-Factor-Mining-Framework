@@ -26,7 +26,7 @@ Upstream's headline result is an **IC of 0.1501 on CSI 300** (GPT-5.2 backbone, 
 - **The paper reports no US IC.** QuantaAlpha does test zero-shot transfer of CSI-300-mined factors onto the S&P 500, and reports it as successful — roughly 137% cumulative excess return over the 2022–2025 test window (Figure 1). But that is a portfolio-level cumulative excess return under a TopkDropout strategy with China-calibrated transaction costs, not an information coefficient. There is no published upstream S&P 500 IC to benchmark against.
 - **Different search.** The evolutionary mutation/crossover loop that produces upstream's headline number is not implemented here.
 
-The honest statement is the one already made under [Known limits](#known-limits): ICs of 0.003–0.011 are weak against the 0.02–0.05 of a decent published factor, and the large t-statistics come from roughly 6,500 trading days rather than from effect size. Factor quality, not tooling, is this repo's binding constraint.
+The honest statement is the one already made under [Known limits](#known-limits): ICs of 0.003–0.011 are weak against the 0.02–0.05 of a decent published factor, and the large t-statistics sit below the noise floor of a search this size — random expressions from the same grammar reach 9 to 12. Factor quality, not tooling, is this repo's binding constraint.
 
 ### Citation
 
@@ -193,6 +193,12 @@ python scripts/sp500_run_baseline_comparison.py --bars data/us_equities/processe
 | random-grammar-seed4 | 54 | 54 | 9.11 | 2.54 | 10 | 18.3% | 7/10 |
 | Alpha101 (published) | 50 | 50 | 12.11 | 2.51 | 10 | 58.8% | 10/10 |
 
+Every `best |t| in-sample` above is measured on the **2000-2017 selection window
+(4,528 trading days)**, with 2018-2025 held back and reported separately in the
+two right-hand columns. It is therefore not the same quantity as the 7.56 under
+[Universe](#universe), which is a full-sample figure — comparing the two
+directly would be comparing an 18-year window against a 26-year one.
+
 Three things fall out of it.
 
 **The random baseline is not weak, and neither is the LLM.** Random-grammar
@@ -333,10 +339,7 @@ derived factor scores and figures, not raw vendor data.
 
 ## Known limits
 
-- Factor provenance is not recorded: `factor_scores.csv` carries no column
-  identifying which model generated a candidate, so two mining runs cannot be
-  compared after the fact.
-- Factor quality, not tooling, is the binding limit: mean ICs of 0.003-0.011 are weak against 0.02-0.05 for a decent published factor, and the large t-statistics (up to 7.6) come from ~6,500 trading days rather than effect size.
+- Factor quality, not tooling, is the binding limit: mean ICs of 0.003-0.011 are weak against 0.02-0.05 for a decent published factor. The large t-statistics are worse than inflated by sample length — they are **below the noise floor of a search this size**. Random expressions drawn from the same grammar reach best |t| of 9.11 to 12.41 on this panel, so a |t| of 8 is not evidence of a factor at all; see [Does the LLM add anything?](#does-the-llm-add-anything).
 - Research quality still depends on the quality and timeliness of external data providers
 - Daily signals and retail-oriented execution assumptions are intentionally conservative and do not represent intraday HFT infrastructure
 - LLM factor generation is bounded and audited, but it still needs human judgment before production use
