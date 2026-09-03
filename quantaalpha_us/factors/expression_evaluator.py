@@ -168,6 +168,13 @@ def _mask_missing(result, *operands):
 
 
 def _elementwise_minmax(op: str, *args: PanelOrScalar) -> PanelOrScalar:
+    if len(args) < 2:
+        # min()/max() over an empty or single operand raised a bare ValueError
+        # from the builtin, escaping the ExpressionError contract every other
+        # failure here honours.
+        raise ExpressionError(
+            f"{op.upper()} needs at least 2 argument(s), got {len(args)}"
+        )
     panels = [a for a in args if isinstance(a, pd.DataFrame)]
     if not panels:
         return min(args) if op == "min" else max(args)

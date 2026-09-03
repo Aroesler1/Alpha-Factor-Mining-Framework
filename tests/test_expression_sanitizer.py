@@ -138,3 +138,79 @@ def test_arity_table_matches_the_evaluator():
         args = ", ".join(["$close"] * (expected + 1))
         with pytest.raises(ExpressionError, match=f"{name} expects {expected} argument"):
             evaluator.evaluate(f"{name}({args})")
+
+
+def _probe_panels():
+    import numpy as np
+    import pandas as pd
+
+    dates = pd.date_range("2024-01-01", periods=80)
+    syms = ["A", "B", "C", "D"]
+    rng = np.random.default_rng(3)
+    panels = {
+        f: pd.DataFrame(rng.random((80, 4)) + 100, index=dates, columns=syms).astype("float64")
+        for f in ("open", "high", "low", "close", "adj_close", "volume", "dollar_volume")
+    }
+    panels["return"] = panels["close"].pct_change(fill_method=None)
+    return panels
+
+
+def _well_formed_call(name: str, sanitizer: ExpressionSanitizer) -> str | None:
+    """Build a syntactically correct call for one function, or None if variadic."""
+    if name in ("IF", "IF_ELSE"):
+        return f"{name}($close > 100, $volume, 0)"
+    if name in sanitizer.VARIADIC_MIN_ARITY:
+        return f"{name}($close, $volume)"
+    n = sanitizer.FUNCTION_ARITY.get(name)
+    if n is None:
+        return None
+    pair = ("TS_CORR", "TS_COV", "TS_COVARIANCE")
+    args = []
+    for i in range(n):
+        if i == 0:
+            args.append("$close")
+        elif i == 1 and name in pair:
+            args.append("$volume")
+        else:
+            args.append("5")
+    return f"{name}({', '.join(args)})"
+
+
+def test_every_allowed_function_agrees_between_gate_and_evaluator():
+    """The gate must accept an expression if and only if the evaluator runs it.
+
+    Three disagreement classes were found one at a time -- bare field names,
+    unknown fields, and wrong arity -- each only after a live mining run wasted
+    a full scoring pass on expressions that could never evaluate. This sweeps
+    the whole function table instead of waiting for the next one.
+    """
+    from quantaalpha_us.factors.expression_evaluator import ExpressionEvaluator
+
+    sanitizer = ExpressionSanitizer()
+    evaluator = ExpressionEvaluator(_probe_panels())
+    disagreements = []
+    for name in sorted({f.upper() for f in sanitizer.allowed_functions}):
+        expression = _well_formed_call(name, sanitizer)
+        assert expression is not None, (
+            f"{name} has neither a fixed arity nor a variadic minimum, so the gate "
+            "cannot validate its argument count at all"
+        )
+        accepted = sanitizer.sanitize(expression).valid
+        try:
+            evaluator.evaluate(expression)
+            runs = True
+        except Exception:
+            runs = False
+        if accepted != runs:
+            disagreements.append((name, expression, accepted, runs))
+    assert not disagreements, f"gate/evaluator disagree: {disagreements}"
+
+
+def test_variadic_minmax_needs_two_operands():
+    """MIN()/MAX() passed the gate and raised a bare ValueError from the builtin."""
+    sanitizer = ExpressionSanitizer()
+    for expression in ("MIN()", "MAX()", "MIN($close)"):
+        result = sanitizer.sanitize(expression)
+        assert not result.valid, f"{expression} should be rejected"
+        assert any("at least 2" in e for e in result.errors), result.errors
+    assert sanitizer.sanitize("MIN($close, $volume)").valid

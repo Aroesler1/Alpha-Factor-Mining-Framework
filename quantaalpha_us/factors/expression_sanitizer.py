@@ -98,6 +98,12 @@ class ExpressionSanitizer:
     # from expression_evaluator so this gate stays dependency-free (that module
     # pulls in pandas/numpy); test_arity_table_matches_the_evaluator asserts the
     # two never drift apart.
+    # MIN/MAX are variadic (elementwise across N operands), so they carry a
+    # MINIMUM arity rather than a fixed one. Without this they fell outside the
+    # arity table entirely: MIN() passed the gate and then raised a bare
+    # ValueError("min() iterable argument is empty") from inside the evaluator.
+    VARIADIC_MIN_ARITY = {"MIN": 2, "MAX": 2}
+
     FUNCTION_ARITY = {
         "ABS": 1, "BOUND": 3, "COUNT": 2, "CS_DEMEAN": 1, "CS_RANK": 1,
         "CS_ZSCORE": 1, "DELAY": 2, "DELTA": 2, "EMA": 2, "IF": 3, "IF_ELSE": 3,
@@ -247,6 +253,13 @@ class ExpressionSanitizer:
             if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
                 continue
             name = node.func.id.upper()
+            minimum = self.VARIADIC_MIN_ARITY.get(name)
+            if minimum is not None:
+                if len(node.args) < minimum:
+                    errors.append(
+                        f"{name} needs at least {minimum} argument(s), got {len(node.args)}"
+                    )
+                continue
             expected = self.FUNCTION_ARITY.get(name)
             if expected is not None and len(node.args) != expected:
                 errors.append(
