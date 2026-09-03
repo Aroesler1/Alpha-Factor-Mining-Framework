@@ -2,58 +2,94 @@
 
 ## Current goal
 
-Make the repo's relationship to its upstream, QuantaAlpha, accurate and visible.
+Answer "does the LLM add anything?" with a measured baseline, and record the
+repo's relationship to its upstream.
 
 ## Verified state (2026-09-03)
 
-- `README.md` has a `## Provenance` section near the top: upstream repo, paper
-  (arXiv:2602.07085), license, kept-vs-rebuilt breakdown, IC framing, and the
-  upstream BibTeX under `### Citation`.
-- `docs/PROVENANCE.md` holds the file-level table.
-- Committed and pushed as `f1def2c` on `main`.
-- `pytest tests/ -q` → **81 passed** (docs-only change; same as the pre-change baseline).
+### Baselines (this session)
 
-## How the provenance table was produced
+The answer is **no**: the LLM sets do not beat expressions drawn at random from
+the same grammar, and both are beaten by Alpha101. Reproduce with one command:
 
-All 27 `.py` files in `quantaalpha_us/` compared against all 159 `.py` files in the
-upstream package tree (4,293 pairs). Both sides normalised: comments and blank lines
-stripped, whitespace collapsed, package names rewritten so naming alone could not
-depress the score. Similarity = `difflib.SequenceMatcher` ratio.
+```
+python scripts/sp500_run_baseline_comparison.py --bars data/us_equities/processed/daily_bars.parquet
+```
 
-Result: **max similarity 0.173 anywhere**; 27 original, 0 adapted, 0 shared. The four
-files sharing a basename with upstream share only imports, `@dataclass`, walk-forward
-window field names, and three risk-config defaults.
+Runtime ~25 min on the full panel. Artifacts land in `data/baseline_comparison/`.
+
+| set | best \|t\| IS | OOS median retention | sign held |
+|---|---:|---:|---:|
+| Claude Fable 5 (20) | 9.82 | 29.5% | 7/8 |
+| Claude Sonnet 5 (54) | 11.64 | 52.8% | 10/10 |
+| random-grammar x5 seeds (54 each) | 9.11 - 12.41 | 10.7% - 66.6% | 5-8/10 |
+| Alpha101 (49) | 12.11 | 58.8% | 10/10 |
+
+- E[max \|t\|] under an iid null at N=54 is 2.54. Every set including pure noise
+  clears 9, because daily ICs are autocorrelated and the t-stat's standard error
+  assumes independence it does not have. The random-grammar row, not the iid
+  figure, is the real bar.
+- Memorization: 2 of 53 Sonnet candidates (4%) exceed 0.9 rank-space correlation
+  to a published alpha; 0 of 20 Fable. Median closest match ~0.41 for both.
+
+### Files added
+
+- `quantaalpha_us/factors/random_expressions.py` - typed grammar sampler. Reads
+  the function set, arities and fields off `ExpressionSanitizer` rather than
+  restating them; `test_signature_map_covers_the_sanitizer_exactly` fails if the
+  two drift.
+- `configs/alpha101_us.txt` - 49 of 101 transcribed, 52 dropped with a reason
+  each in place. A test asserts 49 + 52 = 101.
+- `scripts/sp500_run_baseline_comparison.py` - the one command.
+- `tests/test_random_expressions.py`, `tests/test_alpha101_transcription.py` - 16 tests.
+
+### Files changed
+
+- `expression_evaluator.build_field_panels` now reindexes every field panel onto
+  a common (dates x symbols) union. Field coverage differed (`open`/`high`/`low`
+  had 1,275 columns against `close`'s 1,734 pre-filter), which hard-crashed
+  `MIN`/`MAX` and every comparison, and meant a cross-sectional `RANK` ranked
+  over a different universe depending on which fields an expression touched.
+- `factor_research` gained `ranked_flat`, `_corr_flat`, `rank_space_correlation`
+  and `holdout_frame`; `select_uncorrelated` now caches the kept set's ranks.
+- `scripts/sp500_score_mined_factors.py` uses the shared `holdout_frame`.
+
+### Validation
+
+- `pytest tests/ -q` -> **97 passed** (81 before this session, 16 new).
+- Regression check on the evaluator and refactor: re-running the Fable set
+  through the scoring CLI reproduces the stored numbers exactly (7/8 sign held,
+  29.5% median retention, per-factor ICs identical to 6 dp).
+
+### Provenance (earlier session)
+
+`README.md` `## Provenance` + `docs/PROVENANCE.md`: file-level diff of all 27
+`quantaalpha_us/` modules against all 159 upstream modules, max similarity 0.173,
+27 original / 0 adapted / 0 shared. Commits `f1def2c`, `49ff805`.
 
 ## Known risks / caveats
 
-- **The upstream baseline was not pristine.** `../QuantaAlpha_CN` is a local working
-  copy carrying an earlier rebrand (39 files with substituted project names) and has no
-  git history. Name substitutions were normalised away, and the finding is one of
-  *absence* of overlap, which a rebrand cannot manufacture — but the table has not been
-  checked against an untouched upstream checkout. `docs/PROVENANCE.md` discloses this
-  and gives the re-verification command.
-- **`../QuantaAlpha_CN` itself is an attribution problem, and was left untouched** (out
-  of scope for this task). Its `README.md` presents upstream's work under a different
-  project name with a different maintainer, and its BibTeX block has the paper title
-  replaced while keeping upstream's authors and arXiv id. Its `pyproject.toml` names a
-  different author and homepage. If that tree was ever published, it needs fixing.
-- **The MIT license claim is unverified offline.** No `LICENSE` file exists in the local
-  upstream copy; the MIT classifier in its `pyproject.toml` is in a file that was
-  rebranded, so it is not independent evidence. Confirm against upstream directly.
-- **This repo has no `LICENSE` file** of its own.
-- Stale strings elsewhere in `README.md`: it says the repo is maintained at
-  `Aroesler1/LLMStrat` (actual remote is `Aroesler1/Alpha-Factor-Mining-Framework`) and
-  refers to a `QuantaAlpha_US` directory.
-
-## Paper facts (from the local PDF, primary source)
-
-Upstream headline: **IC 0.1501** on CSI 300 (GPT-5.2), ARR 27.75%, MDD 7.98%. Zero-shot
-transfer of CSI-300-mined factors to the S&P 500 is reported as **successful** — ~137%
-cumulative excess return over the 2022-01-01–2025-12-26 window (Figure 1) — but the paper
-publishes **no S&P 500 IC**. This repo's own ICs are 0.003–0.011.
+- **Alpha101 transcription was not checked against the paper text.** Structure
+  and operator mapping are sound and every line sanitizes and evaluates, but the
+  fractional constants in alphas above #60 (0.876703, 0.518371) were written from
+  the formula list, not re-read from arXiv 1601.00991. Most of that range is
+  dropped for `vwap` anyway. Spot-check before the memorization number is used
+  anywhere load-bearing.
+- **`adv{d}` is an interpretation in five alphas.** The paper defines it as
+  average daily *dollar* volume, but alphas 7, 17, 21, 39 and 43 compare or
+  divide it against share `volume`; under the literal reading alpha007 is -1 on
+  99% of observations. Those five use `TS_MEAN($volume, d)`, flagged in the file
+  header.
+- **No post-training-cutoff window exists.** The panel ends 2025-12-31 and both
+  generating models were trained through 2025+, so the 2018-2025 holdout is
+  inside their training window. A real test needs 2026 bars appended.
+- The random-grammar top-up replaces the ~25% of draws that evaluate to a
+  constant cross-section. It reads the feature panel only, never forward returns.
+- Upstream baseline for `docs/PROVENANCE.md` was a local rebranded copy, not a
+  pristine clone (see that file).
 
 ## Next action
 
-Re-run the comparison against a pristine upstream clone and, if the numbers hold, drop
-the baseline caveat from `docs/PROVENANCE.md`. Separately, decide what to do about
-`../QuantaAlpha_CN`.
+Append 2026 bars and run the post-cutoff test: score the already-frozen
+expressions on 2026 alone against the same five random-grammar seeds. Everything
+else for that test is already built.

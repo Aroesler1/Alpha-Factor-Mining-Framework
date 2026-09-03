@@ -1,0 +1,169 @@
+# Alpha101 -- Kakushadze (2015), "101 Formulaic Alphas", arXiv:1601.00991
+#
+# Transcribed into this repo's expression DSL. Purpose: a published-alpha
+# baseline for the LLM candidate sets, and the reference set for the
+# memorization test (how close is an LLM "discovery" to a known alpha?).
+#
+# Operator mapping
+#   rank(x)              -> CS_RANK(x)
+#   delta / delay        -> TS_DELTA / DELAY
+#   correlation / covariance -> TS_CORR / TS_COV
+#   stddev / sum / product   -> TS_STD / TS_SUM / TS_PRODUCT
+#   ts_min/max/rank/argmax/argmin -> TS_MIN / TS_MAX / TS_RANK / TS_ARGMAX / TS_ARGMIN
+#   decay_linear(x, d)   -> TS_DECAY_LINEAR(x, d)
+#   returns              -> $return
+#   adv{d}               -> TS_MEAN($dollar_volume, d)   (paper: average daily DOLLAR volume)
+#                           EXCEPT in alphas 7, 17, 21, 39 and 43, where adv{d} is compared
+#                           to or divided by `volume` directly. Dollar volume against share
+#                           volume is dimensionally incoherent and makes those alphas
+#                           near-constant (alpha007 evaluates to -1 on 99% of observations),
+#                           so those five use TS_MEAN($volume, d). Flagged because it is an
+#                           interpretation, not a transcription.
+#   signedpower(x, e)    -> SIGN(x) * POWER(ABS(x), e)
+#   (cond) ? a : b       -> IF_ELSE(cond, a, b)
+#   (a < b) * -1         -> IF_ELSE(a < b, 1, 0) * -1     (the evaluator has no bool->numeric cast)
+#   (x < c) || (x == c)  -> x <= c                        (the evaluator has no || or ==)
+#   scale(x)             -> x, ONLY where the surrounding expression is rank-invariant.
+#                           scale() divides by a per-date positive constant, which cannot
+#                           change that date's cross-sectional ordering. Used at the outer
+#                           level (#28) or under SIGN (#31). Where scale() is composed into
+#                           a sum or clipped against a constant it is NOT rank-invariant and
+#                           the alpha is dropped instead (#29, #60).
+#
+# Deviations, all deliberate and listed so they can be checked:
+#   - Divisions are epsilon-guarded (+ 1e-8) as everywhere else in this repo.
+#     The paper does not guard them; unguarded they produce inf and the rank of
+#     an inf is decided by a rounding artefact.
+#   - TS_ARGMAX here returns DAYS SINCE the window maximum; the paper's ts_argmax
+#     returns the index OF the maximum. The two differ by (window - 1 - x), a
+#     monotone decreasing map, so |IC| is unchanged and the sign flips. The
+#     scoring pipeline orients signs itself, so this is immaterial to the result.
+#   - Alphas above #60 carry non-integer window parameters in the paper
+#     (e.g. 8.91644). The evaluator requires positive integer literals, so these
+#     are rounded to nearest. Marked "rounded" below.
+#
+# 60 of 101 are dropped. Every drop is recorded, with its reason, in place.
+
+# --- 1-10 -----------------------------------------------------------------
+CS_RANK(TS_ARGMAX(SIGN(IF_ELSE($return < 0, TS_STD($return, 20), $close)) * POWER(ABS(IF_ELSE($return < 0, TS_STD($return, 20), $close)), 2), 5)) - 0.5
+-1 * TS_CORR(CS_RANK(TS_DELTA(LOG($volume), 2)), CS_RANK(($close - $open) / ($open + 1e-8)), 6)
+-1 * TS_CORR(CS_RANK($open), CS_RANK($volume), 10)
+-1 * TS_RANK(CS_RANK($low), 9)
+# alpha005: DROPPED -- needs vwap
+-1 * TS_CORR($open, $volume, 10)
+IF_ELSE(TS_MEAN($volume, 20) < $volume, -1 * TS_RANK(ABS(TS_DELTA($close, 7)), 60) * SIGN(TS_DELTA($close, 7)), -1)
+-1 * CS_RANK((TS_SUM($open, 5) * TS_SUM($return, 5)) - DELAY(TS_SUM($open, 5) * TS_SUM($return, 5), 10))
+IF_ELSE(TS_MIN(TS_DELTA($close, 1), 5) > 0, TS_DELTA($close, 1), IF_ELSE(TS_MAX(TS_DELTA($close, 1), 5) < 0, TS_DELTA($close, 1), -1 * TS_DELTA($close, 1)))
+CS_RANK(IF_ELSE(TS_MIN(TS_DELTA($close, 1), 4) > 0, TS_DELTA($close, 1), IF_ELSE(TS_MAX(TS_DELTA($close, 1), 4) < 0, TS_DELTA($close, 1), -1 * TS_DELTA($close, 1))))
+
+# --- 11-20 ----------------------------------------------------------------
+# alpha011: DROPPED -- needs vwap
+SIGN(TS_DELTA($volume, 1)) * (-1 * TS_DELTA($close, 1))
+-1 * CS_RANK(TS_COV(CS_RANK($close), CS_RANK($volume), 5))
+(-1 * CS_RANK(TS_DELTA($return, 3))) * TS_CORR($open, $volume, 10)
+-1 * TS_SUM(CS_RANK(TS_CORR(CS_RANK($high), CS_RANK($volume), 3)), 3)
+-1 * CS_RANK(TS_COV(CS_RANK($high), CS_RANK($volume), 5))
+((-1 * CS_RANK(TS_RANK($close, 10))) * CS_RANK(TS_DELTA(TS_DELTA($close, 1), 1))) * CS_RANK(TS_RANK($volume / (TS_MEAN($volume, 20) + 1e-8), 5))
+-1 * CS_RANK((TS_STD(ABS($close - $open), 5) + ($close - $open)) + TS_CORR($close, $open, 10))
+(-1 * SIGN(($close - DELAY($close, 7)) + TS_DELTA($close, 7))) * (1 + CS_RANK(1 + TS_SUM($return, 250)))
+((-1 * CS_RANK($open - DELAY($high, 1))) * CS_RANK($open - DELAY($close, 1))) * CS_RANK($open - DELAY($low, 1))
+
+# --- 21-30 ----------------------------------------------------------------
+IF_ELSE(TS_MEAN($close, 8) + TS_STD($close, 8) < TS_MEAN($close, 2), -1, IF_ELSE(TS_MEAN($close, 2) < TS_MEAN($close, 8) - TS_STD($close, 8), 1, IF_ELSE($volume / (TS_MEAN($volume, 20) + 1e-8) >= 1, 1, -1)))
+-1 * (TS_DELTA(TS_CORR($high, $volume, 5), 5) * CS_RANK(TS_STD($close, 20)))
+IF_ELSE(TS_MEAN($high, 20) < $high, -1 * TS_DELTA($high, 2), 0)
+IF_ELSE(TS_DELTA(TS_MEAN($close, 100), 100) / (DELAY($close, 100) + 1e-8) <= 0.05, -1 * ($close - TS_MIN($close, 100)), -1 * TS_DELTA($close, 3))
+# alpha025: DROPPED -- needs vwap
+-1 * TS_MAX(TS_CORR(TS_RANK($volume, 5), TS_RANK($high, 5), 5), 3)
+# alpha027: DROPPED -- needs vwap
+(TS_CORR(TS_MEAN($dollar_volume, 20), $low, 5) + (($high + $low) / 2)) - $close
+# alpha029: DROPPED -- scale() nested inside log() and then clipped by min(x, 5);
+#           the clip makes the result depend on the scale normaliser, so dropping
+#           scale() would not be rank-equivalent
+(((1.0 - CS_RANK((SIGN($close - DELAY($close, 1)) + SIGN(DELAY($close, 1) - DELAY($close, 2))) + SIGN(DELAY($close, 2) - DELAY($close, 3)))) * TS_SUM($volume, 5)) / (TS_SUM($volume, 20) + 1e-8))
+
+# --- 31-40 ----------------------------------------------------------------
+(CS_RANK(CS_RANK(CS_RANK(TS_DECAY_LINEAR(-1 * CS_RANK(CS_RANK(TS_DELTA($close, 10))), 10)))) + CS_RANK(-1 * TS_DELTA($close, 3))) + SIGN(TS_CORR(TS_MEAN($dollar_volume, 20), $low, 12))
+# alpha032: DROPPED -- needs vwap
+CS_RANK(-1 * (1 - ($open / ($close + 1e-8))))
+CS_RANK((1 - CS_RANK(TS_STD($return, 2) / (TS_STD($return, 5) + 1e-8))) + (1 - CS_RANK(TS_DELTA($close, 1))))
+(TS_RANK($volume, 32) * (1 - TS_RANK(($close + $high) - $low, 16))) * (1 - TS_RANK($return, 32))
+# alpha036: DROPPED -- needs vwap
+CS_RANK(TS_CORR(DELAY($open - $close, 1), $close, 200)) + CS_RANK($open - $close)
+(-1 * CS_RANK(TS_RANK($close, 10))) * CS_RANK($close / ($open + 1e-8))
+(-1 * CS_RANK(TS_DELTA($close, 7) * (1 - CS_RANK(TS_DECAY_LINEAR($volume / (TS_MEAN($volume, 20) + 1e-8), 9))))) * (1 + CS_RANK(TS_SUM($return, 250)))
+(-1 * CS_RANK(TS_STD($high, 10))) * TS_CORR($high, $volume, 10)
+
+# --- 41-50 ----------------------------------------------------------------
+# alpha041: DROPPED -- needs vwap
+# alpha042: DROPPED -- needs vwap
+TS_RANK($volume / (TS_MEAN($volume, 20) + 1e-8), 20) * TS_RANK(-1 * TS_DELTA($close, 7), 8)
+-1 * TS_CORR($high, CS_RANK($volume), 5)
+-1 * ((CS_RANK(TS_MEAN(DELAY($close, 5), 20)) * TS_CORR($close, $volume, 2)) * CS_RANK(TS_CORR(TS_SUM($close, 5), TS_SUM($close, 20), 2)))
+IF_ELSE(((DELAY($close, 20) - DELAY($close, 10)) / 10) - ((DELAY($close, 10) - $close) / 10) > 0.25, -1, IF_ELSE(((DELAY($close, 20) - DELAY($close, 10)) / 10) - ((DELAY($close, 10) - $close) / 10) < 0, 1, -1 * ($close - DELAY($close, 1))))
+# alpha047: DROPPED -- needs vwap
+# alpha048: DROPPED -- needs IndClass (indneutralize)
+IF_ELSE(((DELAY($close, 20) - DELAY($close, 10)) / 10) - ((DELAY($close, 10) - $close) / 10) < -0.1, 1, -1 * ($close - DELAY($close, 1)))
+# alpha050: DROPPED -- needs vwap
+
+# --- 51-60 ----------------------------------------------------------------
+IF_ELSE(((DELAY($close, 20) - DELAY($close, 10)) / 10) - ((DELAY($close, 10) - $close) / 10) < -0.05, 1, -1 * ($close - DELAY($close, 1)))
+(((-1 * TS_MIN($low, 5)) + DELAY(TS_MIN($low, 5), 5)) * CS_RANK((TS_SUM($return, 240) - TS_SUM($return, 20)) / 220)) * TS_RANK($volume, 5)
+-1 * TS_DELTA((($close - $low) - ($high - $close)) / (($close - $low) + 1e-8), 9)
+(-1 * (($low - $close) * POWER($open, 5))) / (((($low - $high) * POWER($close, 5))) + 1e-8)
+-1 * TS_CORR(CS_RANK(($close - TS_MIN($low, 12)) / ((TS_MAX($high, 12) - TS_MIN($low, 12)) + 1e-8)), CS_RANK($volume), 6)
+# alpha056: DROPPED -- needs cap
+# alpha057: DROPPED -- needs vwap
+# alpha058: DROPPED -- needs IndClass and vwap
+# alpha059: DROPPED -- needs IndClass and vwap
+# alpha060: DROPPED -- scale() appears in a difference of two scaled terms, which
+#           is not rank-invariant, so scale() cannot be dropped
+
+# --- 61-70 ----------------------------------------------------------------
+# alpha061: DROPPED -- needs vwap
+# alpha062: DROPPED -- needs vwap
+# alpha063: DROPPED -- needs IndClass and vwap
+# alpha064: DROPPED -- needs vwap
+# alpha065: DROPPED -- needs vwap
+# alpha066: DROPPED -- needs vwap
+# alpha067: DROPPED -- needs IndClass and vwap
+IF_ELSE(TS_RANK(TS_CORR(CS_RANK($high), CS_RANK(TS_MEAN($dollar_volume, 15)), 9), 14) < CS_RANK(TS_DELTA(($close * 0.518371) + ($low * 0.481629), 1)), 1, 0) * -1
+# alpha069: DROPPED -- needs IndClass and vwap
+# alpha070: DROPPED -- needs IndClass and vwap
+
+# --- 71-80 ----------------------------------------------------------------
+# alpha071: DROPPED -- needs vwap
+# alpha072: DROPPED -- needs vwap
+# alpha073: DROPPED -- needs vwap
+# alpha074: DROPPED -- needs vwap
+# alpha075: DROPPED -- needs vwap
+# alpha076: DROPPED -- needs IndClass and vwap
+# alpha077: DROPPED -- needs vwap
+# alpha078: DROPPED -- needs vwap
+# alpha079: DROPPED -- needs IndClass and vwap
+# alpha080: DROPPED -- needs IndClass and vwap
+
+# --- 81-90 ----------------------------------------------------------------
+# alpha081: DROPPED -- needs vwap
+# alpha082: DROPPED -- needs IndClass
+# alpha083: DROPPED -- needs vwap
+# alpha084: DROPPED -- needs vwap
+POWER(CS_RANK(TS_CORR(($high * 0.876703) + ($close * 0.123297), TS_MEAN($dollar_volume, 30), 10)), CS_RANK(TS_CORR(TS_RANK(($high + $low) / 2, 4), TS_RANK($volume, 10), 7)))
+# alpha086: DROPPED -- needs vwap
+# alpha087: DROPPED -- needs IndClass and vwap
+MIN(CS_RANK(TS_DECAY_LINEAR((CS_RANK($open) + CS_RANK($low)) - (CS_RANK($high) + CS_RANK($close)), 8)), TS_RANK(TS_DECAY_LINEAR(TS_CORR(TS_RANK($close, 8), TS_RANK(TS_MEAN($dollar_volume, 60), 21), 8), 7), 3))
+# alpha089: DROPPED -- needs IndClass and vwap
+# alpha090: DROPPED -- needs IndClass
+
+# --- 91-101 ---------------------------------------------------------------
+# alpha091: DROPPED -- needs IndClass and vwap
+# alpha092: DROPPED -- needs vwap
+# alpha093: DROPPED -- needs IndClass and vwap
+# alpha094: DROPPED -- needs vwap
+IF_ELSE(CS_RANK($open - TS_MIN($open, 12)) < TS_RANK(POWER(CS_RANK(TS_CORR(TS_SUM(($high + $low) / 2, 19), TS_SUM(TS_MEAN($dollar_volume, 40), 19), 13)), 5), 12), 1, 0)
+# alpha096: DROPPED -- needs vwap
+# alpha097: DROPPED -- needs IndClass and vwap
+# alpha098: DROPPED -- needs vwap
+IF_ELSE(CS_RANK(TS_CORR(TS_SUM(($high + $low) / 2, 20), TS_SUM(TS_MEAN($dollar_volume, 60), 20), 9)) < CS_RANK(TS_CORR($low, $volume, 6)), 1, 0) * -1
+# alpha100: DROPPED -- needs IndClass and cap
+($close - $open) / (($high - $low) + 0.001)

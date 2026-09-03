@@ -160,6 +160,41 @@ def _cross_sectional_ranks(panel: pd.DataFrame) -> pd.DataFrame:
     return panel.rank(axis=1, pct=True)
 
 
+def ranked_flat(panel: pd.DataFrame, *, date_stride: int = 1) -> np.ndarray:
+    """Per-date cross-sectional ranks, flattened to a float32 vector.
+
+    Ranking is the expensive half of a rank-space correlation, and both the
+    dedup loop and the memorization test compare each signal against many
+    others. Ranking once per signal instead of once per pair is the difference
+    between a runnable command and a two-hour one: at 6,539 dates x 1,185
+    symbols a single pair cost 0.83s, and the two loops together need roughly
+    4,000 pairs.
+
+    `date_stride` keeps every k-th date. Correlation is a pooled statistic over
+    millions of paired observations, so a stride of a few costs nothing in
+    precision and divides the memory a full set of cached signals needs.
+    """
+    values = panel.iloc[::date_stride] if date_stride > 1 else panel
+    return values.rank(axis=1, pct=True).to_numpy(dtype=np.float32).ravel()
+
+
+def _corr_flat(a: np.ndarray, b: np.ndarray, *, min_obs: int = 100) -> float:
+    """Pearson correlation of two flattened rank vectors, ignoring missing pairs."""
+    if a.shape != b.shape:
+        return float("nan")
+    mask = np.isfinite(a) & np.isfinite(b)
+    if int(mask.sum()) < min_obs:
+        return float("nan")
+    x = a[mask].astype(np.float64)
+    y = b[mask].astype(np.float64)
+    x -= x.mean()
+    y -= y.mean()
+    denom = np.sqrt(float((x * x).sum()) * float((y * y).sum()))
+    if denom <= 0:
+        return float("nan")
+    return float((x * y).sum() / denom)
+
+
 def select_uncorrelated(
     report: ResearchReport,
     signals: dict[str, pd.DataFrame],
@@ -198,14 +233,17 @@ def select_uncorrelated(
     # correlation is compared on the ORIGINAL signals (negation cannot change
     # |corr|), while `selected` carries the sign-corrected expressions we emit
     kept_originals: list[str] = []
+    # Ranks of the kept set are reused against every later candidate, so they
+    # are computed once each. Bounded by max_factors, so this cache cannot grow
+    # with the candidate count.
+    kept_flat: list[np.ndarray] = []
     for cand in candidates:
         if len(selected) >= max_factors:
             break
         sig = signals[cand.expression]
+        sig_flat = ranked_flat(sig)
         redundant = False
-        for kept in kept_originals:
-            other = signals[kept]
-            common = sig.columns.intersection(other.columns)
+        for other_flat in kept_flat:
             # Compare in RANK space, per date, because the score these factors
             # are ranked by is a daily cross-sectional rank IC. Pooled Pearson
             # on raw values is not invariant to a monotone cross-sectional
@@ -213,21 +251,86 @@ def select_uncorrelated(
             # same IC to four decimals -- measured 0.21 and both entered the
             # final set as "uncorrelated". In rank space that pair is 1.00.
             # pct=True normalises for a cross-section whose width changes daily.
-            a = _cross_sectional_ranks(sig[common])
-            b = _cross_sectional_ranks(other.reindex(sig.index)[common])
-            a_flat = a.to_numpy(dtype=float).ravel()
-            b_flat = b.to_numpy(dtype=float).ravel()
-            mask = np.isfinite(a_flat) & np.isfinite(b_flat)
-            if mask.sum() >= 100:
-                corr = np.corrcoef(a_flat[mask], b_flat[mask])[0, 1]
-                if np.isfinite(corr) and abs(corr) > max_abs_corr:
-                    redundant = True
-                    break
+            corr = _corr_flat(sig_flat, other_flat)
+            if np.isfinite(corr) and abs(corr) > max_abs_corr:
+                redundant = True
+                break
         if not redundant:
             # orient the emitted factor so higher rank = higher expected return
             oriented = cand.expression if cand.mean_ic >= 0 else f"-({cand.expression})"
             selected.append(oriented)
             kept_originals.append(cand.expression)
+            kept_flat.append(sig_flat)
 
     report.selected = selected
     return selected
+
+
+def rank_space_correlation(a: pd.DataFrame, b: pd.DataFrame, *,
+                           date_stride: int = 1) -> float:
+    """Pooled correlation of two signals after per-date cross-sectional ranking.
+
+    The same measure `select_uncorrelated` dedups on, factored out so the
+    memorization test ("is this LLM factor a restatement of a published one?")
+    asks the question in the space the selection already uses. Rank space
+    matters: a monotone cross-sectional transform leaves the IC untouched, so
+    two expressions that are the same idea can look uncorrelated on raw values.
+    """
+    common = a.columns.intersection(b.columns)
+    if len(common) == 0:
+        return float("nan")
+    return _corr_flat(
+        ranked_flat(a[common], date_stride=date_stride),
+        ranked_flat(b.reindex(a.index)[common], date_stride=date_stride),
+    )
+
+
+def holdout_frame(
+    bars: pd.DataFrame,
+    selected: Sequence[str],
+    report: ResearchReport,
+    *,
+    test_dates: pd.DatetimeIndex,
+    min_cross_section: int = 30,
+    model: str = "unrecorded",
+) -> pd.DataFrame:
+    """Score already-selected factors on the holdout with in-sample choices frozen.
+
+    Shared by the scoring CLI and the baseline-comparison runner so the two
+    cannot drift: a holdout number computed two slightly different ways is not
+    a comparison, it is two numbers.
+    """
+    if not len(selected):
+        return pd.DataFrame()
+    oos_report, _ = score_expressions(
+        bars, list(selected), min_cross_section=min_cross_section, ic_dates=test_dates
+    )
+    is_by_expr = {s.expression: s for s in report.scores}
+    rows = []
+    for score in oos_report.scores:
+        # The emitted factor is the original expression when its IC was already
+        # positive, and "-(original)" when it was not. A leading "-" therefore
+        # does NOT imply the orientation step added it -- several candidates are
+        # authored negated -- so try the expression as-is before unwrapping, or
+        # the in-sample IC silently comes back NaN.
+        expr = score.expression
+        in_sample = is_by_expr.get(expr)
+        if in_sample is None and expr.startswith("-(") and expr.endswith(")"):
+            in_sample = is_by_expr.get(expr[2:-1])
+        if in_sample is None and expr.startswith("-"):
+            in_sample = is_by_expr.get(expr[1:])
+        # the emitted factor is oriented so higher = better, so an in-sample
+        # mean IC is compared as its absolute value
+        is_ic = abs(in_sample.mean_ic) if in_sample else float("nan")
+        rows.append({
+            "expression": score.expression,
+            "model": model,
+            "is_mean_ic": is_ic,
+            "oos_mean_ic": score.mean_ic,
+            "oos_ic_tstat": score.ic_tstat,
+            "oos_ic_days": score.ic_days,
+            "sign_held": bool(np.isfinite(score.mean_ic) and score.mean_ic > 0),
+            "retention": (score.mean_ic / is_ic
+                          if is_ic and np.isfinite(is_ic) and is_ic != 0 else np.nan),
+        })
+    return pd.DataFrame(rows)

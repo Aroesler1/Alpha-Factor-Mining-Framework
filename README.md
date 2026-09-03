@@ -150,6 +150,130 @@ rolling-window warm-up.
 
 `--train-end none` selects on the full sample and says so.
 
+### This holdout is not a post-cutoff test
+
+The panel ends **2025-12-31**, and every candidate set here was written by a
+model trained on data running through 2025 and beyond. The 2018-2025 holdout is
+therefore *inside* the generating model's training window. It is out of sample
+for the selection step and in sample for the model that proposed the
+expressions, which is a weaker claim than "out of sample" usually implies: a
+model can propose a factor because it worked, without any of the reasoning that
+would make it work again.
+
+**No post-training-cutoff window exists in this repo today.** A real post-cutoff
+test needs 2026 bars appended to the panel and the frozen expressions scored on
+that window alone. Until that data is here, treat every retention number above
+as an upper bound. The
+[recent literature on LLM-generated alpha](#does-the-llm-add-anything) is
+directly about this failure mode.
+
+## Does the LLM add anything?
+
+**No. On this repo's data, the LLM-generated factor sets do not beat expressions
+drawn at random from the same grammar, and both are beaten by a 2015 published
+factor set.** The strongest Sonnet candidate scores |t| = 11.64 in sample; five
+seeds of random expression-generation, matched for candidate count and
+structure, produce best |t| between 9.11 and 12.41. Sonnet sits inside that
+range. Fable, at 9.82, sits below its median.
+
+Reproduce the whole table with one command:
+
+```bash
+python scripts/sp500_run_baseline_comparison.py --bars data/us_equities/processed/daily_bars.parquet
+```
+
+| set | candidates | scorable | best \|t\| in-sample | E[max \|t\|] under iid null | selected | OOS median IC retention | sign held OOS |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Claude Fable 5 | 20 | 20 | 9.82 | 2.17 | 8 | 29.5% | 7/8 |
+| Claude Sonnet 5 | 54 | 53 | 11.64 | 2.53 | 10 | 52.8% | 10/10 |
+| random-grammar-seed0 | 54 | 54 | 10.97 | 2.54 | 10 | 20.5% | 7/10 |
+| random-grammar-seed1 | 54 | 54 | 9.80 | 2.54 | 10 | 66.6% | 8/10 |
+| random-grammar-seed2 | 54 | 54 | 9.93 | 2.54 | 10 | 10.7% | 5/10 |
+| random-grammar-seed3 | 54 | 54 | 12.41 | 2.54 | 10 | 28.2% | 7/10 |
+| random-grammar-seed4 | 54 | 54 | 9.11 | 2.54 | 10 | 18.3% | 7/10 |
+| Alpha101 (published) | 49 | 49 | 12.11 | 2.50 | 10 | 58.8% | 10/10 |
+
+Three things fall out of it.
+
+**The random baseline is not weak, and neither is the LLM.** Random-grammar
+retention ranges from 10.7% to 66.6% across seeds. Sonnet's 52.8% is inside
+that spread, and seed 1 beats it. With five seeds the honest reading is that
+retention is dominated by draw-to-draw variance, not by which process wrote the
+expressions. A single random seed would have been enough to "prove" either
+conclusion, which is exactly why there are five.
+
+**The iid null is far too generous, and the empirical one is the real bar.**
+E[max |t|] over N independent standard-normal draws is about 2.5 at N = 54. Every
+set here, pure noise included, clears 9. The gap is daily IC autocorrelation:
+the t-statistic divides by a standard error that assumes 4,500 independent days
+and does not get them. So `|t| = 8` is not evidence of anything on this panel —
+the random-grammar row says noise reaches 9 to 12 routinely. This also
+reframes the |t| figures under [Known limits](#known-limits): they are below the
+noise floor of a search this size, not merely inflated by sample length.
+
+**Alpha101 wins.** A factor set published in 2015, transcribed mechanically, is
+at least as good as both LLM sets on every column: highest in-sample |t| of the
+non-random sets, highest retention, 10/10 signs held. Whatever the LLM is doing,
+it is not beating a decade-old reference.
+
+### The memorization test
+
+For every LLM candidate, its highest rank-space correlation to any of the 49
+transcribed Alpha101 signals, computed on the same panel through the same
+evaluator:
+
+| set | candidates | max corr | median corr | share > 0.9 |
+|---|---:|---:|---:|---:|
+| Claude Fable 5 | 20 | 0.878 | 0.417 | **0%** |
+| Claude Sonnet 5 | 53 | 0.949 | 0.412 | **4%** (2 of 53) |
+
+Outright restatement is rare, and that is the more interesting result: the LLM
+is mostly *not* reciting Alpha101, it is producing genuinely different
+expressions that are no better than random ones. The two Sonnet candidates above
+0.9 are near-duplicates of published alphas — the top match, at 0.95, is
+`CS_RANK((($close - $open) / $open) - (($open - DELAY($close, 1)) / DELAY($close, 1)))`
+against alpha033 — so a mining run that reports them as discoveries is
+overcounting its own novelty, but only twice.
+
+### What this does not show
+
+This is a memorization and null-comparison test, not a post-cutoff test. Both
+generating models were trained on data covering 2018-2025, so the holdout cannot
+separate "the model reasoned well" from "the model remembered". The design of a
+real test is fixed and waiting on data: append 2026 bars, score the already
+frozen expressions on 2026 alone, and compare against the same random-grammar
+seeds. See [This holdout is not a post-cutoff test](#this-holdout-is-not-a-post-cutoff-test).
+
+The framing and the failure modes come from the 2025-26 work on LLM-generated
+alpha: Look-Ahead-Bench ([arXiv 2601.13770](https://arxiv.org/abs/2601.13770)),
+MemGuard-Alpha ([arXiv 2603.26797](https://arxiv.org/abs/2603.26797)), The Alpha
+Illusion ([arXiv 2605.16895](https://arxiv.org/abs/2605.16895)) and Profit
+Mirage ([arXiv 2510.07920](https://arxiv.org/abs/2510.07920)), which argue that
+LLM-proposed signals are contaminated by training-window memorization and
+frequently fail to beat naive baselines once the evaluation window clears the
+cutoff. The table above is that argument reproduced on this repo's own factors.
+
+### How the baselines are built
+
+- **Random grammar** (`quantaalpha_us/factors/random_expressions.py`) samples
+  from exactly the grammar the sanitizer accepts — the function set, arities and
+  field names are read out of `ExpressionSanitizer.FUNCTION_ARITY`,
+  `VARIADIC_MIN_ARITY` and `KNOWN_FIELDS` rather than restated, and a test fails
+  if the two ever drift apart. Sampling is typed, because an untyped sampler
+  passes `sanitize()` and then dies in `evaluate()` — which would quietly bias
+  the null by deleting its malformed draws and keeping the survivors. Draws are
+  matched to the Sonnet set's call-count and depth distribution so the null is a
+  search of the same size and shape. About a quarter of raw draws evaluate to a
+  constant cross-section and are replaced, using the feature panel only, never
+  forward returns.
+- **Alpha101** (`configs/alpha101_us.txt`) transcribes Kakushadze
+  ([arXiv 1601.00991](https://arxiv.org/abs/1601.00991)). 49 of 101 are
+  expressible here; the other 52 need `vwap`, `cap` or an industry
+  classification the panel does not carry, and each is listed in place with its
+  reason. Operator mappings and the deliberate deviations — epsilon-guarded
+  division, `TS_ARGMAX` orientation, rounded non-integer windows — are documented
+  in the file header.
+
 ## Universe
 
 Scoring is restricted to **point-in-time S&P 500 membership**, joined on

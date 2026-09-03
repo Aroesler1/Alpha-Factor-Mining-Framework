@@ -36,7 +36,11 @@ from quantaalpha_us.factors.experiment_trace import (  # noqa: E402
     ExperimentTrace,
     TraceRecord,
 )
-from quantaalpha_us.factors.factor_research import score_expressions, select_uncorrelated  # noqa: E402
+from quantaalpha_us.factors.factor_research import (  # noqa: E402
+    holdout_frame,
+    score_expressions,
+    select_uncorrelated,
+)
 
 
 def load_candidates(path: Path) -> list[str]:
@@ -197,37 +201,8 @@ def main() -> int:
     # the sign out of sample would be the same overfitting one layer down.
     oos = None
     if test_dates is not None and selected:
-        oos_report, _ = score_expressions(bars, selected,
-                                          min_cross_section=args.min_cross_section,
-                                          ic_dates=test_dates)
-        is_by_expr = {s.expression: s for s in report.scores}
-        rows = []
-        for score in oos_report.scores:
-            # The emitted factor is the original expression when its IC was
-            # already positive, and "-(original)" when it was not. A leading "-"
-            # therefore does NOT imply the orientation step added it -- several
-            # candidates are authored negated -- so try the expression as-is
-            # before unwrapping, or the in-sample IC silently comes back NaN.
-            expr = score.expression
-            in_sample = is_by_expr.get(expr)
-            if in_sample is None and expr.startswith("-(") and expr.endswith(")"):
-                in_sample = is_by_expr.get(expr[2:-1])
-            if in_sample is None and expr.startswith("-"):
-                in_sample = is_by_expr.get(expr[1:])
-            # the emitted factor is oriented so higher = better, so an in-sample
-            # mean IC is compared as its absolute value
-            is_ic = abs(in_sample.mean_ic) if in_sample else float("nan")
-            rows.append({
-                "expression": score.expression,
-                "model": args.model,
-                "is_mean_ic": is_ic,
-                "oos_mean_ic": score.mean_ic,
-                "oos_ic_tstat": score.ic_tstat,
-                "oos_ic_days": score.ic_days,
-                "sign_held": bool(np.isfinite(score.mean_ic) and score.mean_ic > 0),
-                "retention": (score.mean_ic / is_ic) if is_ic and np.isfinite(is_ic) and is_ic != 0 else np.nan,
-            })
-        oos = pd.DataFrame(rows)
+        oos = holdout_frame(bars, selected, report, test_dates=test_dates,
+                            min_cross_section=args.min_cross_section, model=args.model)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

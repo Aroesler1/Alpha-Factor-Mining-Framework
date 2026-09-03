@@ -75,6 +75,24 @@ def build_field_panels(bars: pd.DataFrame) -> dict[str, pd.DataFrame]:
             # on those, so pin every panel to plain float64 with NaN missings
             panels[col] = panel.astype("float64")
 
+    # Every panel is reindexed onto the union of dates and symbols before use.
+    # Field coverage is not identical -- a name can have a close and no open --
+    # and pandas arithmetic silently aligns to the union while a bare field stays
+    # narrow. That left two panels in one expression carrying different column
+    # sets, which crashes anything comparing them elementwise: MIN/MAX stack
+    # their operands with np.stack ("all input arrays must have the same shape")
+    # and `a > b` raises "Can only compare identically-labeled DataFrame
+    # objects". It also meant a cross-sectional RANK ranked over a different
+    # universe depending on which fields the expression happened to touch.
+    # After the point-in-time membership filter the gap is one symbol in 1,185,
+    # so this changes no score materially; it changes whether the expression
+    # runs at all.
+    if panels:
+        all_dates = panels["close"].index if "close" in panels else next(iter(panels.values())).index
+        all_symbols = sorted(set().union(*(p.columns for p in panels.values())))
+        for key in list(panels):
+            panels[key] = panels[key].reindex(index=all_dates, columns=all_symbols)
+
     # research convention: $close means the adjusted close when available
     if "adj_close" in panels:
         panels["close"] = panels["adj_close"]
