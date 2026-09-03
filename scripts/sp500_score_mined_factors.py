@@ -48,6 +48,50 @@ def load_candidates(path: Path) -> list[str]:
     return out
 
 
+def apply_membership_filter(bars: pd.DataFrame, membership: str) -> pd.DataFrame:
+    """Restrict bars to point-in-time index membership, joined on (date, permno).
+
+    This must run before anything is computed. The bars panel carries every name
+    that was ever a constituent over the sample, which is ~745 per date against
+    the index's ~502: on 2005-06-15, 315 of 814 names in the panel (39%) were
+    not in the S&P 500 that day, and the surplus are future members as often as
+    former ones. Ranking a factor cross-sectionally over that panel scores it on
+    a universe no strategy could have held, and it inflates significance -- the
+    best candidate measured |t| = 8.21 unfiltered against 7.56 filtered.
+
+    Joined on permno rather than symbol so ticker reuse cannot reintroduce the
+    identity ambiguity the PERMNO keying exists to remove.
+    """
+    if str(membership).lower() == "none":
+        print("WARNING: scoring the RAW panel; it contains names that were not "
+              "index members on the dates they are ranked against.")
+        return bars
+
+    path = Path(membership)
+    if not path.exists():
+        raise SystemExit(
+            f"Membership file not found: {path}. Build it with "
+            "scripts/sp500_build_membership.py, or pass --membership none to "
+            "score the raw panel deliberately."
+        )
+    members = pd.read_parquet(path)
+    if "active" in members.columns:
+        members = members[members["active"]]
+    members = members[["date", "permno"]].dropna().drop_duplicates()
+    members["date"] = pd.to_datetime(members["date"])
+    members["permno"] = members["permno"].astype("int64")
+
+    before_rows, before_names = len(bars), bars["permno"].nunique()
+    out = bars.assign(
+        date=pd.to_datetime(bars["date"]),
+        permno=bars["permno"].astype("int64"),
+    ).merge(members, on=["date", "permno"], how="inner")
+    print(f"Point-in-time membership filter: {before_rows:,} -> {len(out):,} rows, "
+          f"{before_names} -> {out['permno'].nunique()} distinct names "
+          f"({out.groupby('date')['permno'].nunique().mean():.0f} per date)")
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--bars", required=True, help="daily bars file (csv or parquet)")
@@ -77,37 +121,7 @@ def main() -> int:
     else:
         bars = pd.read_csv(bars_path)
 
-    # Restrict to point-in-time index membership BEFORE anything is computed.
-    # The bars panel carries every name that was ever a constituent over the
-    # sample, which is ~745 per date against the index's ~501: on 2005-06-15,
-    # 315 of 814 names in the panel (39%) were not in the S&P 500 that day.
-    # Ranking a factor cross-sectionally over those names scores it on a
-    # universe the strategy could not have held, and the extra names are
-    # future members as often as former ones.
-    if str(args.membership).lower() != "none":
-        membership_path = Path(args.membership)
-        if not membership_path.exists():
-            raise SystemExit(
-                f"Membership file not found: {membership_path}. Build it with "
-                "scripts/sp500_build_membership.py, or pass --membership none to "
-                "score the raw panel deliberately."
-            )
-        members = pd.read_parquet(membership_path)
-        members = members[members["active"]] if "active" in members.columns else members
-        members = members[["date", "permno"]].dropna().drop_duplicates()
-        members["date"] = pd.to_datetime(members["date"])
-        members["permno"] = members["permno"].astype("int64")
-        before_rows, before_names = len(bars), bars["permno"].nunique()
-        bars = bars.assign(
-            date=pd.to_datetime(bars["date"]),
-            permno=bars["permno"].astype("int64"),
-        ).merge(members, on=["date", "permno"], how="inner")
-        print(f"Point-in-time membership filter: {before_rows:,} -> {len(bars):,} rows, "
-              f"{before_names} -> {bars['permno'].nunique()} distinct names "
-              f"({bars.groupby('date')['permno'].nunique().mean():.0f} per date)")
-    else:
-        print("WARNING: scoring the RAW panel; it contains names that were not "
-              "index members on the dates they are ranked against.")
+    bars = apply_membership_filter(bars, args.membership)
 
     candidates = load_candidates(Path(args.candidates))
     print(f"Scoring {len(candidates)} candidate expressions on {bars_path} ...")
