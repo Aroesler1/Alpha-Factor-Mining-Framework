@@ -9,6 +9,8 @@ from quantaalpha_us.factors.expression_evaluator import (
     build_field_panels,
 )
 from quantaalpha_us.factors.factor_research import (
+    FactorScore,
+    ResearchReport,
     forward_open_returns,
     score_expressions,
     select_uncorrelated,
@@ -221,3 +223,81 @@ def test_checked_in_candidate_file_all_sanitize_and_evaluate():
         assert result.valid, f"sanitizer rejected: {expr}: {result.errors}"
         panel = ev.evaluate(result.cleaned)
         assert panel.notna().any().any(), f"all-NaN signal: {expr}"
+
+
+def _gapped_panels():
+    """Panels where symbol B has no data for the first three days."""
+    dates = pd.date_range("2024-01-01", periods=6)
+    syms = ["A", "B"]
+    ret = pd.DataFrame(
+        [[0.01, np.nan], [-0.02, np.nan], [0.03, np.nan],
+         [-0.01, 0.02], [0.02, -0.03], [-0.03, 0.01]],
+        index=dates, columns=syms,
+    )
+    panels = {
+        f: pd.DataFrame(100.0, index=dates, columns=syms)
+        for f in ("open", "high", "low", "close", "adj_close", "volume", "dollar_volume")
+    }
+    panels["return"] = ret
+    return panels
+
+
+@pytest.mark.parametrize("expression", [
+    "MIN($return, 0)",
+    "MAX($return, 0)",
+    "IF($return < 0, $return, 0)",
+    "IF($return < 0, 1, 0)",
+])
+def test_missing_observations_never_become_real_values(expression):
+    """A stock that did not trade must not acquire a factor value.
+
+    nanmin/nanmax ignore NaN, so MIN($return, 0) returned 0 on days a stock had
+    no data; and pandas answers `NaN < 0` with False, so IF() handed those days
+    its else-branch. Either way an absent stock-day entered the cross-section as
+    a real observation. It showed up as coverage of 99.7% for such a factor
+    against 42.7% for the same expression without the MIN.
+    """
+    result = ExpressionEvaluator(_gapped_panels()).evaluate(expression)
+    assert int(pd.isna(result["B"]).sum()) >= 3, (
+        f"{expression} fabricated values for a symbol with no data"
+    )
+
+
+def test_min_max_and_if_still_compute_where_data_exists():
+    """The NaN guard must not blank out genuine observations."""
+    result = ExpressionEvaluator(_gapped_panels()).evaluate("IF($return < 0, $return, 0)")
+    assert result.loc["2024-01-05", "B"] == pytest.approx(-0.03)
+    assert result.loc["2024-01-06", "B"] == pytest.approx(0.0)
+    assert result.loc["2024-01-04", "A"] == pytest.approx(-0.01)
+    mn = ExpressionEvaluator(_gapped_panels()).evaluate("MIN($return, 0)")
+    assert mn.loc["2024-01-05", "B"] == pytest.approx(-0.03)
+    assert mn.loc["2024-01-04", "B"] == pytest.approx(0.0)
+
+
+def test_dedup_catches_a_monotone_transform_of_a_kept_factor():
+    """CS_RANK(X) and X are the same ordering, so only one may be selected.
+
+    Selection ranks on daily cross-sectional rank IC, which is invariant to a
+    monotone cross-sectional transform -- the two score identically. Dedup used
+    pooled Pearson on raw values, which is not invariant: the real pair
+    ($open - DELAY($close,1))/DELAY($close,1) and its CS_RANK measured 0.21
+    pooled-Pearson against 1.00 in rank space, so both entered a set billed as
+    uncorrelated.
+    """
+    dates = pd.date_range("2024-01-01", periods=200)
+    syms = [f"S{i}" for i in range(25)]
+    rng = np.random.default_rng(11)
+    raw = pd.DataFrame(rng.normal(size=(200, 25)), index=dates, columns=syms)
+    signals = {"raw": raw, "ranked": raw.rank(axis=1, pct=True)}
+
+    scores = [
+        FactorScore("raw", mean_ic=0.01, ic_tstat=6.0, ic_days=200,
+                    signal_autocorr=0.9, coverage=1.0),
+        FactorScore("ranked", mean_ic=0.01, ic_tstat=5.0, ic_days=200,
+                    signal_autocorr=0.9, coverage=1.0),
+    ]
+    report = ResearchReport(scores=scores)
+    selected = select_uncorrelated(report, signals, min_abs_tstat=2.0,
+                                   max_abs_corr=0.7, max_factors=10)
+    assert len(selected) == 1, f"a monotone transform survived dedup: {selected}"
+    assert "raw" in selected[0]

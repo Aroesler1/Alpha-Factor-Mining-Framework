@@ -145,6 +145,11 @@ def score_expressions(
     return report, signals
 
 
+def _cross_sectional_ranks(panel: pd.DataFrame) -> pd.DataFrame:
+    """Rank each date's cross-section to [0, 1], leaving missing values missing."""
+    return panel.rank(axis=1, pct=True)
+
+
 def select_uncorrelated(
     report: ResearchReport,
     signals: dict[str, pd.DataFrame],
@@ -191,11 +196,20 @@ def select_uncorrelated(
         for kept in kept_originals:
             other = signals[kept]
             common = sig.columns.intersection(other.columns)
-            a = sig[common].to_numpy(dtype=float).ravel()
-            b = other[common].reindex(sig.index)[common].to_numpy(dtype=float).ravel()
-            mask = np.isfinite(a) & np.isfinite(b)
+            # Compare in RANK space, per date, because the score these factors
+            # are ranked by is a daily cross-sectional rank IC. Pooled Pearson
+            # on raw values is not invariant to a monotone cross-sectional
+            # transform, so CS_RANK(X) and X -- the same ordering, hence the
+            # same IC to four decimals -- measured 0.21 and both entered the
+            # final set as "uncorrelated". In rank space that pair is 1.00.
+            # pct=True normalises for a cross-section whose width changes daily.
+            a = _cross_sectional_ranks(sig[common])
+            b = _cross_sectional_ranks(other.reindex(sig.index)[common])
+            a_flat = a.to_numpy(dtype=float).ravel()
+            b_flat = b.to_numpy(dtype=float).ravel()
+            mask = np.isfinite(a_flat) & np.isfinite(b_flat)
             if mask.sum() >= 100:
-                corr = np.corrcoef(a[mask], b[mask])[0, 1]
+                corr = np.corrcoef(a_flat[mask], b_flat[mask])[0, 1]
                 if np.isfinite(corr) and abs(corr) > max_abs_corr:
                     redundant = True
                     break

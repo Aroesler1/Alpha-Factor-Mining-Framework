@@ -155,6 +155,18 @@ _TS_CORR = _pairwise(lambda x, y, w: x.rolling(w, min_periods=w).corr(y))
 _TS_COV = _pairwise(lambda x, y, w: x.rolling(w, min_periods=w).cov(y))
 
 
+def _mask_missing(result, *operands):
+    """Restore NaN in a boolean comparison wherever an operand was missing."""
+    mask = None
+    for operand in operands:
+        if isinstance(operand, pd.DataFrame):
+            missing = operand.isna()
+            mask = missing if mask is None else (mask | missing)
+    if mask is None or not isinstance(result, pd.DataFrame):
+        return result
+    return result.astype("object").where(~mask, np.nan)
+
+
 def _elementwise_minmax(op: str, *args: PanelOrScalar) -> PanelOrScalar:
     panels = [a for a in args if isinstance(a, pd.DataFrame)]
     if not panels:
@@ -165,9 +177,13 @@ def _elementwise_minmax(op: str, *args: PanelOrScalar) -> PanelOrScalar:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN slices
         out = np.nanmin(stacked, axis=0) if op == "min" else np.nanmax(stacked, axis=0)
-    # preserve NaN where every operand is NaN
-    all_nan = np.isnan(stacked).all(axis=0)
-    out = np.where(all_nan, np.nan, out)
+    # Propagate NaN if ANY operand is missing, not only if all are. nanmin/
+    # nanmax ignore NaN, so MIN($return, 0) on a day a stock did not trade
+    # returned 0 -- a fabricated observation that then entered the
+    # cross-sectional rank. Coverage for such a factor read 99.7% against 42.7%
+    # for the same expression without the MIN, which is how this surfaced.
+    any_nan = np.isnan(stacked).any(axis=0)
+    out = np.where(any_nan, np.nan, out)
     return pd.DataFrame(out, index=like.index, columns=like.columns)
 
 
@@ -227,14 +243,21 @@ class ExpressionEvaluator:
             left, right = self._eval(node.left), self._eval(node.comparators[0])
             op = node.ops[0]
             if isinstance(op, ast.Gt):
-                return left > right
-            if isinstance(op, ast.Lt):
-                return left < right
-            if isinstance(op, ast.GtE):
-                return left >= right
-            if isinstance(op, ast.LtE):
-                return left <= right
-            raise ExpressionError(f"Comparison {type(op).__name__} not allowed")
+                result = left > right
+            elif isinstance(op, ast.Lt):
+                result = left < right
+            elif isinstance(op, ast.GtE):
+                result = left >= right
+            elif isinstance(op, ast.LtE):
+                result = left <= right
+            else:
+                raise ExpressionError(f"Comparison {type(op).__name__} not allowed")
+            # pandas answers NaN < 0 with False, which is fatal here: a stock
+            # that did not trade would test as "not negative" and IF() would
+            # hand it the else-branch as a real observation. Mask the comparison
+            # back to NaN wherever either side is missing, so _if_else's
+            # cond.notna() guard actually has something to see.
+            return _mask_missing(result, left, right)
 
         if isinstance(node, ast.Call):
             if not isinstance(node.func, ast.Name) or node.keywords:
