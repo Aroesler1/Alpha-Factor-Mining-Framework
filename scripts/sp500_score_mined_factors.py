@@ -101,6 +101,12 @@ def main() -> int:
     parser.add_argument("--max-abs-corr", type=float, default=0.7)
     parser.add_argument("--max-factors", type=int, default=10)
     parser.add_argument("--min-cross-section", type=int, default=30)
+    parser.add_argument("--train-end", default="2017-12-31",
+                        help="last date whose IC may influence selection. Everything after "
+                             "is a held-out window scored only once, with the in-sample "
+                             "choices -- expression AND sign -- frozen. Pass 'none' to "
+                             "select on the full sample, which is what the factor-zoo "
+                             "literature is about.")
     parser.add_argument("--membership",
                         default=str(US_ROOT / "data" / "us_equities" / "reference"
                                     / "sp500_membership_daily.parquet"),
@@ -126,7 +132,26 @@ def main() -> int:
     candidates = load_candidates(Path(args.candidates))
     print(f"Scoring {len(candidates)} candidate expressions on {bars_path} ...")
 
-    report, signals = score_expressions(bars, candidates, min_cross_section=args.min_cross_section)
+    all_dates = pd.to_datetime(bars["date"]).drop_duplicates().sort_values()
+    if str(args.train_end).lower() == "none":
+        train_dates, test_dates = None, None
+        print("WARNING: selecting on the full sample; reported ICs are in-sample.")
+    else:
+        cut = pd.Timestamp(args.train_end)
+        train_dates = pd.DatetimeIndex(all_dates[all_dates <= cut])
+        test_dates = pd.DatetimeIndex(all_dates[all_dates > cut])
+        if len(test_dates) < 250:
+            raise SystemExit(
+                f"--train-end {args.train_end} leaves only {len(test_dates)} holdout "
+                "days; that is too few to say anything about decay."
+            )
+        print(f"Selection window: {train_dates.min().date()} -> {train_dates.max().date()} "
+              f"({len(train_dates):,} days)   holdout: {test_dates.min().date()} -> "
+              f"{test_dates.max().date()} ({len(test_dates):,} days)")
+
+    report, signals = score_expressions(bars, candidates,
+                                        min_cross_section=args.min_cross_section,
+                                        ic_dates=train_dates)
     selected = select_uncorrelated(
         report,
         signals,
@@ -167,6 +192,43 @@ def main() -> int:
         print(f"  distinct hypotheses ever tried: {trace.n_hypotheses()} "
               f"(use this as the DSR trial count, not {len(selected)})")
 
+    # Score the SELECTED factors on the holdout, with the in-sample decisions --
+    # which expressions, and which sign each was oriented to -- frozen. Refitting
+    # the sign out of sample would be the same overfitting one layer down.
+    oos = None
+    if test_dates is not None and selected:
+        oos_report, _ = score_expressions(bars, selected,
+                                          min_cross_section=args.min_cross_section,
+                                          ic_dates=test_dates)
+        is_by_expr = {s.expression: s for s in report.scores}
+        rows = []
+        for score in oos_report.scores:
+            # The emitted factor is the original expression when its IC was
+            # already positive, and "-(original)" when it was not. A leading "-"
+            # therefore does NOT imply the orientation step added it -- several
+            # candidates are authored negated -- so try the expression as-is
+            # before unwrapping, or the in-sample IC silently comes back NaN.
+            expr = score.expression
+            in_sample = is_by_expr.get(expr)
+            if in_sample is None and expr.startswith("-(") and expr.endswith(")"):
+                in_sample = is_by_expr.get(expr[2:-1])
+            if in_sample is None and expr.startswith("-"):
+                in_sample = is_by_expr.get(expr[1:])
+            # the emitted factor is oriented so higher = better, so an in-sample
+            # mean IC is compared as its absolute value
+            is_ic = abs(in_sample.mean_ic) if in_sample else float("nan")
+            rows.append({
+                "expression": score.expression,
+                "model": args.model,
+                "is_mean_ic": is_ic,
+                "oos_mean_ic": score.mean_ic,
+                "oos_ic_tstat": score.ic_tstat,
+                "oos_ic_days": score.ic_days,
+                "sign_held": bool(np.isfinite(score.mean_ic) and score.mean_ic > 0),
+                "retention": (score.mean_ic / is_ic) if is_ic and np.isfinite(is_ic) and is_ic != 0 else np.nan,
+            })
+        oos = pd.DataFrame(rows)
+
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     frame = report.frame().sort_values("ic_tstat", key=lambda s: s.abs(), ascending=False)
@@ -197,6 +259,20 @@ def main() -> int:
         print(f"  {expr}")
         lines.append(f'    - "{expr}"')
     snippet_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if oos is not None and not oos.empty:
+        oos_path = out_dir / "holdout_scores.csv"
+        oos.to_csv(oos_path, index=False)
+        held = int(oos["sign_held"].sum())
+        median_retention = float(oos["retention"].median())
+        print(f"\nHOLDOUT ({test_dates.min().date()} -> {test_dates.max().date()}, "
+              f"{len(test_dates):,} days), in-sample choices frozen:")
+        with pd.option_context("display.width", 170, "display.max_colwidth", 52):
+            print(oos[["expression", "is_mean_ic", "oos_mean_ic", "oos_ic_tstat",
+                       "sign_held"]].to_string(index=False))
+        print(f"\n  factors keeping their sign out of sample: {held}/{len(oos)}")
+        print(f"  median IC retention: {median_retention:.1%}")
+        print(f"  -> {oos_path}")
+
     print(f"\nConfig snippet -> {snippet_path}")
     print("Paste the snippet into your research config; the walk-forward and "
           "promotion gates remain the final arbiter.")

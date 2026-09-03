@@ -111,12 +111,22 @@ def score_expressions(
     *,
     min_cross_section: int = 30,
     sanitizer: Optional[ExpressionSanitizer] = None,
+    ic_dates: Optional[pd.DatetimeIndex] = None,
 ) -> tuple[ResearchReport, dict[str, pd.DataFrame]]:
-    """Sanitize, evaluate, and score expressions. Returns (report, signals)."""
+    """Sanitize, evaluate, and score expressions. Returns (report, signals).
+
+    `ic_dates` restricts which dates contribute to the IC while leaving signal
+    evaluation on the full panel. Every operator here is backward-looking, so
+    computing signals over all history and then scoring a date subset leaks
+    nothing -- and unlike slicing the bars first, it does not blank out the
+    holdout's first 252 days to rolling-window warm-up.
+    """
     sanitizer = sanitizer or ExpressionSanitizer()
     panels = build_field_panels(bars)
     evaluator = ExpressionEvaluator(panels)
     fwd = forward_open_returns(panels)
+    if ic_dates is not None:
+        fwd = fwd.loc[fwd.index.isin(ic_dates)]
 
     report = ResearchReport()
     signals: dict[str, pd.DataFrame] = {}

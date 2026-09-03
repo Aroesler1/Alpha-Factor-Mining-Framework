@@ -83,6 +83,31 @@ A Deflated Sharpe computed against the survivors understates the search by exact
 python scripts/sp500_score_mined_factors.py --bars <panel> --trace data/trace.jsonl
 ```
 
+## Out-of-sample holdout
+
+Factors are selected on **2000-2017** and reported on **2018-2025**, with the
+in-sample choices frozen: which expressions, and which sign each was oriented
+to. Refitting the sign out of sample would be the same overfitting one layer
+down.
+
+| candidate set | keeps sign OOS | median IC retention |
+|---|---|---|
+| Claude Fable 5 (20 candidates) | 7 / 8 | **29.5%** |
+| Claude Sonnet 5 (54 candidates) | 10 / 10 | **52.8%** |
+| fundamental (12 candidates) | 8 / 9 | **93.3%** |
+
+The price-only sets lose most of their edge. On the Fable set, **one of eight
+factors clears |t| > 2 out of sample**, against eight of eight in sample by
+construction, and one flips sign outright. That is the factor-zoo result
+measured on this repo's own factors rather than cited from a paper.
+
+Signals are computed over the full panel and only the *IC dates* are
+restricted. Every operator is backward-looking, so this leaks nothing, and
+unlike slicing the bars it does not blank the holdout's first 252 days to
+rolling-window warm-up.
+
+`--train-end none` selects on the full sample and says so.
+
 ## Universe
 
 Scoring is restricted to **point-in-time S&P 500 membership**, joined on
