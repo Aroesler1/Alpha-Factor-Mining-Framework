@@ -101,25 +101,40 @@ class ClaudeCodeBackend:
         proc = subprocess.run(
             cmd, capture_output=True, text=True, timeout=self.timeout_seconds
         )
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"claude CLI failed (rc={proc.returncode}): {proc.stderr.strip()[:300]}"
-            )
 
-        try:
-            envelope = json.loads(proc.stdout)
-        except json.JSONDecodeError as exc:
+        # Parse the envelope BEFORE branching on the exit code. The CLI puts its
+        # diagnostic in stdout's JSON, not stderr, and it does so on failing exit
+        # codes too: an expired OAuth session exits 1 with an EMPTY stderr and
+        # {"is_error": true, "result": "Failed to authenticate: OAuth session
+        # expired..."} on stdout. Reporting stderr on a nonzero exit therefore
+        # produced "claude CLI failed (rc=1): " with no reason in it at all.
+        # Measured against CLI 2.1.239.
+        envelope: Any = None
+        if proc.stdout.strip():
+            try:
+                envelope = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                envelope = None
+
+        if isinstance(envelope, dict) and envelope.get("is_error"):
+            # `subtype` is a poor fallback -- it reads "success" even on a failed
+            # authentication -- so prefer `result`, then the API error status.
+            detail = str(
+                envelope.get("result")
+                or envelope.get("api_error_status")
+                or envelope.get("subtype")
+                or "unknown"
+            )
+            raise RuntimeError(f"claude CLI reported an error: {detail[:300]}")
+
+        if proc.returncode != 0:
+            detail = proc.stderr.strip() or proc.stdout.strip() or "no output on either stream"
+            raise RuntimeError(f"claude CLI failed (rc={proc.returncode}): {detail[:300]}")
+
+        if envelope is None:
             raise RuntimeError(
                 f"claude CLI returned non-JSON output: {proc.stdout[:200]!r}"
-            ) from exc
-
-        # The CLI reports in-run failures inside the envelope with exit code 0 --
-        # an expired OAuth session, a rate limit, a model error all arrive as
-        # {"is_error": true, "result": "..."} on a successful process exit.
-        # Checking only returncode silently treats those as empty factor lists.
-        if envelope.get("is_error"):
-            detail = str(envelope.get("result") or envelope.get("subtype") or "unknown")
-            raise RuntimeError(f"claude CLI reported an error: {detail[:300]}")
+            )
 
         # --json-schema puts the typed value in structured_output; fall back to
         # parsing the text result for CLI versions that predate that field.

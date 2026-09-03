@@ -104,6 +104,10 @@ derived factor scores and figures, not raw vendor data.
 
 ## Known limits
 
+- The Claude Code backend has been exercised against the real CLI, but only as
+  far as its error path: the local OAuth session is expired, so the happy path
+  (a live factor generation) is still unverified end to end. Running it needs
+  `claude login` first.
 - Factor quality, not tooling, is the binding limit: mean ICs of 0.003-0.010 are weak, and the large t-statistics come from 6,517 trading days rather than effect size.
 - Research quality still depends on the quality and timeliness of external data providers
 - Daily signals and retail-oriented execution assumptions are intentionally conservative and do not represent intraday HFT infrastructure

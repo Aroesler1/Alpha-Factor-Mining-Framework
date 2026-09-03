@@ -51,6 +51,37 @@ def test_cli_error_envelope_raises_even_on_exit_code_zero(monkeypatch):
         ClaudeCodeBackend().generate("prompt")
 
 
+def test_cli_error_envelope_read_on_nonzero_exit(monkeypatch):
+    """Nonzero exit AND an empty stderr: the reason is only in stdout's envelope.
+
+    Measured against CLI 2.1.239, an expired OAuth session exits 1, writes
+    nothing to stderr, and puts "Failed to authenticate..." in the stdout JSON.
+    Reporting stderr here produced "claude CLI failed (rc=1): " with no
+    diagnostic at all, which is what this guards against.
+    """
+    envelope = {
+        "is_error": True,
+        "result": "Failed to authenticate: OAuth session expired and could not be refreshed",
+        "subtype": "success",
+    }
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: _FakeProc(stdout=json.dumps(envelope), stderr="", returncode=1),
+    )
+    with pytest.raises(RuntimeError, match="OAuth session expired"):
+        ClaudeCodeBackend().generate("prompt")
+
+
+def test_cli_nonzero_exit_without_envelope_still_reports_something(monkeypatch):
+    """A hard crash with no JSON must not raise an empty, reasonless message."""
+    monkeypatch.setattr(
+        "subprocess.run",
+        lambda *a, **k: _FakeProc(stdout="", stderr="", returncode=127),
+    )
+    with pytest.raises(RuntimeError, match="no output on either stream"):
+        ClaudeCodeBackend().generate("prompt")
+
+
 def test_cli_prefers_structured_output(monkeypatch):
     envelope = {
         "is_error": False,
