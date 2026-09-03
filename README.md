@@ -2,6 +2,48 @@
 
 LLMStrat is a US equities research and execution stack for daily S&P 500 alpha mining. It builds a point-in-time universe, maintains market data, evaluates candidate signals with walk-forward controls, and can route approved portfolios into Alpaca paper or live trading with explicit risk checks.
 
+## Provenance
+
+This project descends from **QuantaAlpha** — [QuantaAlpha/QuantaAlpha](https://github.com/QuantaAlpha/QuantaAlpha), MIT License, paper: *QuantaAlpha: An Evolutionary Framework for LLM-Driven Alpha Mining* ([arXiv:2602.07085](https://arxiv.org/abs/2602.07085)). QuantaAlpha targets the China A-share market; this is a rewrite for US equities.
+
+**Kept from QuantaAlpha:**
+
+- The **staged research pipeline** concept: ideate, express, sanitise, evaluate, gate — with the LLM confined to the ideation stage and every stage after it mechanical and auditable.
+- The **formulaic-alpha DSL** as the LLM's output contract, rather than free-form generated code. 22 of this repo's 32 operator names (`TS_MEAN`, `RANK`, `DELAY`, `TS_CORR`, `ZSCORE`, …) also appear in upstream's function library, though most are the common Alpha101/Qlib vocabulary predating both projects.
+- The **LLM-ideation framing**: a frontier model is a hypothesis generator whose output is worthless until it survives an evaluation harness it cannot influence.
+
+**Rebuilt here, with no upstream counterpart:** the data layer (CRSP via WRDS, replacing Qlib/A-share); the point-in-time S&P 500 membership filter joined on PERMNO rather than ticker; rank-space deduplication of candidate signals; the out-of-sample holdout with frozen in-sample sign; the sanitizer's identifier and arity checks; the Claude Code LLM backend; and the append-only, content-addressed experiment trace.
+
+**Not carried over:** upstream's evolutionary search itself — the trajectory-level mutation and crossover operators that are the paper's actual contribution. This repo does single-shot ideation plus selection. It inherits QuantaAlpha's scaffolding, not its algorithm.
+
+At the code level the two share nothing: a file-by-file comparison of all 27 modules in `quantaalpha_us/` against all 159 upstream modules found no file above 0.17 similarity, and the four files that share a basename with an upstream file share only imports and `@dataclass` decorators. The full table, the method, and its caveats are in **[docs/PROVENANCE.md](docs/PROVENANCE.md)**.
+
+### On comparing IC against the paper
+
+Upstream's headline result is an **IC of 0.1501 on CSI 300** (GPT-5.2 backbone, ARR 27.75%, MDD 7.98%). This repo measures mean ICs of **0.003–0.011** on the S&P 500. Those numbers are not comparable, and the gap should not be read as either a validation or a failure of this port:
+
+- **Different market.** Upstream's headline is CSI 300. US large-cap is the most heavily arbitraged equity universe in the world; daily cross-sectional ICs there are structurally smaller than in A-shares.
+- **The paper reports no US IC.** QuantaAlpha does test zero-shot transfer of CSI-300-mined factors onto the S&P 500, and reports it as successful — roughly 137% cumulative excess return over the 2022–2025 test window (Figure 1). But that is a portfolio-level cumulative excess return under a TopkDropout strategy with China-calibrated transaction costs, not an information coefficient. There is no published upstream S&P 500 IC to benchmark against.
+- **Different search.** The evolutionary mutation/crossover loop that produces upstream's headline number is not implemented here.
+
+The honest statement is the one already made under [Known limits](#known-limits): ICs of 0.003–0.011 are weak against the 0.02–0.05 of a decent published factor, and the large t-statistics come from roughly 6,500 trading days rather than from effect size. Factor quality, not tooling, is this repo's binding constraint.
+
+### Citation
+
+If you use this work, please cite the upstream paper:
+
+```bibtex
+@misc{han2026quantaalphaevolutionaryframeworkllmdriven,
+      title={QuantaAlpha: An Evolutionary Framework for LLM-Driven Alpha Mining},
+      author={Jun Han and Shuo Zhang and Wei Li and Zhi Yang and Yifan Dong and Tu Hu and Jialuo Yuan and Xiaomin Yu and Yumo Zhu and Fangqi Lou and Xin Guo and Zhaowei Liu and Tianyi Jiang and Ruichuan An and Jingping Liu and Biao Wu and Rongze Chen and Kunyi Wang and Yifan Wang and Sen Hu and Xinbing Kong and Liwen Zhang and Ronghao Chen and Huacan Wang},
+      year={2026},
+      eprint={2602.07085},
+      archivePrefix={arXiv},
+      primaryClass={q-fin.ST},
+      url={https://arxiv.org/abs/2602.07085},
+}
+```
+
 ## Repository layout
 
 - `configs/`: research, paper, live, and LLM runtime configuration
