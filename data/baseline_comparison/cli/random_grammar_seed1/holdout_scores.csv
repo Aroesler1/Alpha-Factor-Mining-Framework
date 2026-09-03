@@ -1,0 +1,11 @@
+expression,model,is_mean_ic,oos_mean_ic,oos_ic_tstat,oos_ic_days,sign_held,retention
+"(BOUND(($volume * $low), -3, 3) - (MAX($close, $close) - IF((($high - $high) > 0), ($return + $open), $high)))",random-grammar-seed1,0.011670522199821717,0.011653008505989541,3.698195497040781,2009,True,0.9984993221783646
+"POWER((BOUND(TS_COVARIANCE(($open + $open), ($dollar_volume - $volume), 63), -3, 3) + (BOUND(($open - $volume), -3, 3) * TS_DELTA(($open * $close), 5))), 3)",random-grammar-seed1,0.010337939499884862,0.005500535456565136,1.5729295706322732,2009,True,0.5320727071991859
+"-((TS_COV($volume, ($open * $volume), 10) / (POWER(TS_COVARIANCE(MIN(($high + $volume), $high), COUNT((TS_SUM($low, 21) < 0), 63), 21), 0.25) + 1e-8)))",random-grammar-seed1,0.008250413712916405,0.0018439554998665513,0.8281376209265392,2009,True,0.22349854977329847
+"-(POWER(TS_COVARIANCE($volume, $return, 21), 2))",random-grammar-seed1,0.009555328237666662,0.002565780715644196,0.8865020719250504,2009,True,0.2685183231623595
+"-(POWER(TS_COV($return, $dollar_volume, 5), 2))",random-grammar-seed1,0.007703717387278812,-0.0032587057710758323,-1.2864839023646863,2009,False,-0.42300432469874216
+"TS_ARGMIN(MIN(TS_MAX(($return + $close), 63), $open), 252)",random-grammar-seed1,0.00869993577195971,0.01370488593041406,3.890505336918805,2009,True,1.5752858744757097
+"-((TS_CORR(($close * $low), ($volume * $low), 10) * IF((($dollar_volume + $volume) > ($high - $high)), $high, POWER($return, 2))))",random-grammar-seed1,0.004098949555596349,0.004562408632175575,2.0491939859581567,2009,True,1.1130677678007674
+"-((POWER($close, 3) - POWER($open, 1)))",random-grammar-seed1,0.005126719715786031,-0.005990654076716927,-1.8018430496038718,2009,False,-1.1685160119580356
+"-(BOUND(TS_RANK(($high + $low), 10), -3, 3))",random-grammar-seed1,0.006096355351451795,0.007578846391496585,1.9074540506098139,2009,True,1.2431766120214347
+"POWER(BOUND(TS_MIN($open, 5), -3, 3), 3)",random-grammar-seed1,0.005032358014077141,0.0040238977070692575,0.3110869391554728,25,True,0.7996048166313103

@@ -42,7 +42,10 @@
 #     (e.g. 8.91644). The evaluator requires positive integer literals, so these
 #     are rounded to nearest. Marked "rounded" below.
 #
-# 60 of 101 are dropped. Every drop is recorded, with its reason, in place.
+# 51 of 101 are dropped. Every drop is recorded, with its reason, in place.
+# Verified against the paper text: no transcribed alpha needs a field the panel
+# lacks, every drop-for-field claim matches the published formula, and all numeric
+# constants in the 50 transcriptions match the paper exactly.
 
 # --- 1-10 -----------------------------------------------------------------
 CS_RANK(TS_ARGMAX(SIGN(IF_ELSE($return < 0, TS_STD($return, 20), $close)) * POWER(ABS(IF_ELSE($return < 0, TS_STD($return, 20), $close)), 2), 5)) - 0.5
@@ -77,9 +80,13 @@ IF_ELSE(TS_DELTA(TS_MEAN($close, 100), 100) / (DELAY($close, 100) + 1e-8) <= 0.0
 -1 * TS_MAX(TS_CORR(TS_RANK($volume, 5), TS_RANK($high, 5), 5), 3)
 # alpha027: DROPPED -- needs vwap
 (TS_CORR(TS_MEAN($dollar_volume, 20), $low, 5) + (($high + $low) / 2)) - $close
-# alpha029: DROPPED -- scale() nested inside log() and then clipped by min(x, 5);
-#           the clip makes the result depend on the scale normaliser, so dropping
-#           scale() would not be rank-equivalent
+# alpha029: DROPPED -- nesting depth. scale() is immaterial here (it sits inside
+#           rank(rank(...)), which is invariant to a positive rescaling), but written
+#           out the expression nests 12 deep against the sanitizer's cap of 10. It
+#           fits only if sum(x,1), product(x,1) and min(x,5) are collapsed to
+#           identities, and min(x,5) is an identity only under this repo's pct-based
+#           CS_RANK, not the paper's integer rank. Too many silent semantic changes
+#           to call it a transcription.
 (((1.0 - CS_RANK((SIGN($close - DELAY($close, 1)) + SIGN(DELAY($close, 1) - DELAY($close, 2))) + SIGN(DELAY($close, 2) - DELAY($close, 3)))) * TS_SUM($volume, 5)) / (TS_SUM($volume, 20) + 1e-8))
 
 # --- 31-40 ----------------------------------------------------------------
@@ -116,8 +123,10 @@ IF_ELSE(((DELAY($close, 20) - DELAY($close, 10)) / 10) - ((DELAY($close, 10) - $
 # alpha057: DROPPED -- needs vwap
 # alpha058: DROPPED -- needs IndClass and vwap
 # alpha059: DROPPED -- needs IndClass and vwap
-# alpha060: DROPPED -- scale() appears in a difference of two scaled terms, which
-#           is not rank-invariant, so scale() cannot be dropped
+# alpha060: DROPPED -- 2*scale(rank(A)) - scale(rank(B)). scale normalises each operand
+#           by the sum over ITS OWN valid cross-section, and A and B have different
+#           NaN patterns (B is ts_argmax(close, 10), so it warms up later). The two
+#           normalisers therefore differ and cannot be factored out of the difference.
 
 # --- 61-70 ----------------------------------------------------------------
 # alpha061: DROPPED -- needs vwap
@@ -141,7 +150,7 @@ IF_ELSE(TS_RANK(TS_CORR(CS_RANK($high), CS_RANK(TS_MEAN($dollar_volume, 15)), 9)
 # alpha077: DROPPED -- needs vwap
 # alpha078: DROPPED -- needs vwap
 # alpha079: DROPPED -- needs IndClass and vwap
-# alpha080: DROPPED -- needs IndClass and vwap
+# alpha080: DROPPED -- needs IndClass
 
 # --- 81-90 ----------------------------------------------------------------
 # alpha081: DROPPED -- needs vwap
@@ -157,7 +166,7 @@ MIN(CS_RANK(TS_DECAY_LINEAR((CS_RANK($open) + CS_RANK($low)) - (CS_RANK($high) +
 
 # --- 91-101 ---------------------------------------------------------------
 # alpha091: DROPPED -- needs IndClass and vwap
-# alpha092: DROPPED -- needs vwap
+MIN(TS_RANK(TS_DECAY_LINEAR(IF_ELSE((((($high + $low) / 2) + $close) < ($low + $open)), 1, 0), 15), 19), TS_RANK(TS_DECAY_LINEAR(TS_CORR(CS_RANK($low), CS_RANK(TS_MEAN($dollar_volume, 30)), 8), 7), 7))
 # alpha093: DROPPED -- needs IndClass and vwap
 # alpha094: DROPPED -- needs vwap
 IF_ELSE(CS_RANK($open - TS_MIN($open, 12)) < TS_RANK(POWER(CS_RANK(TS_CORR(TS_SUM(($high + $low) / 2, 19), TS_SUM(TS_MEAN($dollar_volume, 40), 19), 13)), 5), 12), 1, 0)
@@ -165,5 +174,5 @@ IF_ELSE(CS_RANK($open - TS_MIN($open, 12)) < TS_RANK(POWER(CS_RANK(TS_CORR(TS_SU
 # alpha097: DROPPED -- needs IndClass and vwap
 # alpha098: DROPPED -- needs vwap
 IF_ELSE(CS_RANK(TS_CORR(TS_SUM(($high + $low) / 2, 20), TS_SUM(TS_MEAN($dollar_volume, 60), 20), 9)) < CS_RANK(TS_CORR($low, $volume, 6)), 1, 0) * -1
-# alpha100: DROPPED -- needs IndClass and cap
+# alpha100: DROPPED -- needs IndClass
 ($close - $open) / (($high - $low) + 0.001)

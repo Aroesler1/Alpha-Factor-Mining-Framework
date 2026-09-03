@@ -1,0 +1,11 @@
+expression,model,is_mean_ic,oos_mean_ic,oos_ic_tstat,oos_ic_days,sign_held,retention
+"-(IF_ELSE((BOUND($close, -3, 3) > ($high + $open)), ($open - $high), ($close - $low)))",random-grammar-seed3,0.014303494434868173,0.000526563868068922,0.22846399430956904,2009,True,0.03681365210904667
+"((TS_SUM(($open - $close), 10) * IF(($high <= 0), ($volume + $dollar_volume), $dollar_volume)) / (IF_ELSE((($dollar_volume - $dollar_volume) > 0), $low, ($open + $low)) + 1e-8))",random-grammar-seed3,0.012274273145738451,0.009183299305071004,2.833604082928867,2009,True,0.7481745921761067
+"-(MIN(($volume - $volume), ($close - $high)))",random-grammar-seed3,0.011683822509210774,0.01165391869457442,3.698428135136163,2009,True,0.9974405795181517
+"-(POWER((COUNT((($low - $close) < 0), 252) + POWER($low, 0.25)), 1))",random-grammar-seed3,0.00940634056404115,-0.0019845630656957964,-1.0741078344986026,2009,False,-0.21098141750070645
+"MIN((TS_CORR(($volume + $dollar_volume), $low, 3) * CS_ZSCORE(($return + $volume))), $close)",random-grammar-seed3,0.006036297013643646,-0.0002349868885868542,-0.17300981766949267,2009,False,-0.03892898047523523
+"-(POWER((TS_CORR($open, ($return - $high), 63) * (IF_ELSE(($return >= 0), $close, ($volume - $volume)) * COUNT(($low >= $return), 252))), 2))",random-grammar-seed3,0.010754295077315236,0.00666377306757293,2.121412629886755,2009,True,0.6196382951802465
+"-((ZSCORE($close) * MIN($open, ($close - $return))))",random-grammar-seed3,0.0069638565220079204,-0.004053222658626659,-1.927455514828416,2009,False,-0.5820370718174955
+"-(BOUND(TS_CORR(($close + $open), IF((SIGN($open) <= ($dollar_volume + $low)), $close, ($low - $return)), 10), -3, 3))",random-grammar-seed3,0.008134846140139726,0.00404006481215025,1.4145897511064274,2009,True,0.4966369053024102
+"-(MAX(TS_COV($dollar_volume, $volume, 10), $close))",random-grammar-seed3,0.008410577452786732,0.0024139314053853904,1.084246205627996,2009,True,0.2870113757273071
+"(TS_COVARIANCE(($open - $volume), ($high - $open), 21) - MIN(($dollar_volume - $dollar_volume), ($open + $close)))",random-grammar-seed3,0.006992054366333384,0.0019365187451252544,0.8467581961660001,2009,True,0.27695990958673855

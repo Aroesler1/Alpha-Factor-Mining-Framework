@@ -1,0 +1,11 @@
+expression,model,is_mean_ic,oos_mean_ic,oos_ic_tstat,oos_ic_days,sign_held,retention
+"-((EMA(($volume * $close), 5) / (IF_ELSE(($open < 0), ($volume + $open), ($close + $dollar_volume)) + 1e-8)))",random-grammar-seed0,0.01167565978949885,0.0040064815107997125,2.4391100228830043,2009,True,0.343148188884637
+"-((COUNT(($return >= 0), 5) * IF_ELSE((($high + $high) > $return), $dollar_volume, IF((($volume - $return) > $high), $low, $low))))",random-grammar-seed0,0.008043943135234087,-0.00029726969581814997,-0.106394032171034,2009,False,-0.03695571821188653
+"-(TS_COVARIANCE(($close - $volume), ($close - $dollar_volume), 3))",random-grammar-seed0,0.007770524584862662,0.0002391640425026418,0.12047760857238479,2009,True,0.030778365075704712
+"-(TS_COV(ZSCORE(($volume + $open)), $open, 5))",random-grammar-seed0,0.004718149857027226,0.0015318107560714658,0.8803616358827409,2009,True,0.32466343852770646
+"-(MIN(($high * $volume), TS_COVARIANCE($return, $close, 63)))",random-grammar-seed0,0.01116954064215568,0.0009608552198639263,0.28034429504478714,2009,True,0.08602459587617246
+"-(COUNT((BOUND($return, -3, 3) <= 0), 252))",random-grammar-seed0,0.011125998534765723,0.012986423126016321,3.0529170324934585,2009,True,1.1672141682777755
+"SIGN(TS_DELTA(($open + $open), 252))",random-grammar-seed0,0.009504441459844623,0.010940558322207306,2.57245582965598,2009,True,1.1510995536592172
+"-(SQRT((TS_DELTA($volume, 21) + COUNT(($return > 0), 3))))",random-grammar-seed0,0.006120473722851976,0.004229596690225024,1.615285460924588,1968,True,0.6910570785449179
+"(RANK(($volume - $dollar_volume)) - (POWER($close, 3) + IF((($dollar_volume + $low) < ($high + $close)), ($volume + $high), $open)))",random-grammar-seed0,0.005085289880051118,-0.006003527020048935,-1.8046877105132189,2009,False,-1.1805673150708544
+"BOUND(ABS($low), -3, 3)",random-grammar-seed0,0.00488466899966971,-0.0019727545859967856,-0.14408013565601757,24,False,-0.4038665846406745

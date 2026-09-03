@@ -36,7 +36,9 @@ from quantaalpha_us.factors.expression_evaluator import (  # noqa: E402
 from quantaalpha_us.factors.factor_research import (  # noqa: E402
     _corr_flat,
     holdout_frame,
+    mean_daily_rank_correlation,
     ranked_flat,
+    ranked_matrix,
     score_expressions,
     select_uncorrelated,
 )
@@ -204,10 +206,20 @@ def main() -> int:
         ("claude-fable-5", fable),
         ("claude-sonnet-5", sonnet),
     ]
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
     for seed in range(args.seeds):
         print(f"drawing random-grammar-seed{seed} ...", flush=True)
-        sets.append((f"random-grammar-seed{seed}",
-                     draw_random_set(seed, args.random_size, sonnet, evaluator)))
+        drawn = draw_random_set(seed, args.random_size, sonnet, evaluator)
+        # Written out so the null is inspectable, and so each set can be re-scored
+        # through sp500_score_mined_factors.py --model random-grammar-seed{N}
+        # exactly like a real candidate file. Deterministic given the seed.
+        path = out_dir / f"random_grammar_seed{seed}.txt"
+        path.write_text(f"# random-grammar-seed{seed}: {len(drawn)} expressions sampled from\n"
+                        f"# ExpressionSanitizer's grammar, matched to the Sonnet set's structure.\n"
+                        f"# Regenerate with scripts/sp500_run_baseline_comparison.py --seeds {args.seeds}\n"
+                        + "\n".join(drawn) + "\n", encoding="utf-8")
+        sets.append((f"random-grammar-seed{seed}", drawn))
     sets.append(("alpha101", alpha101))
 
     rows, all_signals = [], {}
@@ -226,27 +238,29 @@ def main() -> int:
     # the check for that, and it is only meaningful because Alpha101 is scored
     # here on the same panel through the same evaluator.
     print("memorization test: ranking signals once ...", flush=True)
-    alpha_flat = {expr: ranked_flat(sig, date_stride=MEMORIZATION_DATE_STRIDE)
+    alpha_rank = {expr: ranked_matrix(sig, date_stride=MEMORIZATION_DATE_STRIDE)
                   for expr, sig in all_signals["alpha101"].items()}
     mem_rows = []
     for name in ("claude-fable-5", "claude-sonnet-5"):
         for expr, signal in all_signals[name].items():
-            flat = ranked_flat(signal, date_stride=MEMORIZATION_DATE_STRIDE)
-            best_corr, best_match = 0.0, None
-            for a_expr, a_flat in alpha_flat.items():
-                corr = _corr_flat(flat, a_flat)
-                if np.isfinite(corr) and abs(corr) > abs(best_corr):
-                    best_corr, best_match = corr, a_expr
+            mat = ranked_matrix(signal, date_stride=MEMORIZATION_DATE_STRIDE)
+            flat = mat.ravel()
+            best_daily, best_match, best_pooled = 0.0, None, float("nan")
+            for a_expr, a_mat in alpha_rank.items():
+                daily = mean_daily_rank_correlation(mat, a_mat)
+                if np.isfinite(daily) and abs(daily) > abs(best_daily):
+                    best_daily = daily
+                    best_match = a_expr
+                    best_pooled = _corr_flat(flat, a_mat.ravel())
             mem_rows.append({"set": name, "expression": expr,
-                             "max_abs_corr_to_alpha101": abs(best_corr),
+                             "max_abs_corr_to_alpha101": abs(best_daily),
+                             "pooled_corr_at_that_match": abs(best_pooled),
                              "closest_alpha101": best_match})
     mem = pd.DataFrame(mem_rows)
     mem_share = (mem.groupby("set")["max_abs_corr_to_alpha101"]
                     .apply(lambda s: float((s > MEMORIZATION_THRESHOLD).mean())))
     table["share_corr_gt_0.9_to_alpha101"] = table["set"].map(mem_share)
 
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
     table.to_csv(out_dir / "comparison_table.csv", index=False)
     mem.sort_values("max_abs_corr_to_alpha101", ascending=False).to_csv(
         out_dir / "memorization_test.csv", index=False)

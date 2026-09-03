@@ -160,6 +160,41 @@ def _cross_sectional_ranks(panel: pd.DataFrame) -> pd.DataFrame:
     return panel.rank(axis=1, pct=True)
 
 
+def ranked_matrix(panel: pd.DataFrame, *, date_stride: int = 1) -> np.ndarray:
+    """Per-date cross-sectional ranks as a (dates x symbols) float32 array."""
+    values = panel.iloc[::date_stride] if date_stride > 1 else panel
+    return values.rank(axis=1, pct=True).to_numpy(dtype=np.float32)
+
+
+def mean_daily_rank_correlation(a: np.ndarray, b: np.ndarray, *,
+                                min_cross_section: int = 30) -> float:
+    """Average over days of the per-day cross-sectional rank correlation.
+
+    Distinct from the pooled correlation `_corr_flat` computes. Pooling lets a
+    day with an unusually wide or unusually dispersed cross-section carry more
+    weight than a thin one, and it mixes across-day level differences into a
+    statistic that is supposed to be about within-day ordering. Averaging the
+    daily figure is the measure the IC itself uses, so it is the one that
+    answers "is this LLM factor the same signal as that published alpha, on a
+    typical day". Both are reported; they agree closely here.
+    """
+    if a.shape != b.shape:
+        return float("nan")
+    mask = np.isfinite(a) & np.isfinite(b)
+    am = np.where(mask, a, np.nan).astype(np.float64)
+    bm = np.where(mask, b, np.nan).astype(np.float64)
+    with np.errstate(invalid="ignore"):
+        ac = am - np.nanmean(am, axis=1, keepdims=True)
+        bc = bm - np.nanmean(bm, axis=1, keepdims=True)
+        cov = np.nansum(ac * bc, axis=1)
+        denom = np.sqrt(np.nansum(ac * ac, axis=1) * np.nansum(bc * bc, axis=1))
+        per_day = np.where(denom > 0, cov / np.where(denom > 0, denom, 1.0), np.nan)
+    per_day = np.where(mask.sum(axis=1) >= min_cross_section, per_day, np.nan)
+    if not np.isfinite(per_day).any():
+        return float("nan")
+    return float(np.nanmean(per_day))
+
+
 def ranked_flat(panel: pd.DataFrame, *, date_stride: int = 1) -> np.ndarray:
     """Per-date cross-sectional ranks, flattened to a float32 vector.
 
@@ -174,8 +209,7 @@ def ranked_flat(panel: pd.DataFrame, *, date_stride: int = 1) -> np.ndarray:
     millions of paired observations, so a stride of a few costs nothing in
     precision and divides the memory a full set of cached signals needs.
     """
-    values = panel.iloc[::date_stride] if date_stride > 1 else panel
-    return values.rank(axis=1, pct=True).to_numpy(dtype=np.float32).ravel()
+    return ranked_matrix(panel, date_stride=date_stride).ravel()
 
 
 def _corr_flat(a: np.ndarray, b: np.ndarray, *, min_obs: int = 100) -> float:

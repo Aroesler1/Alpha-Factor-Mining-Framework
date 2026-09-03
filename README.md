@@ -191,7 +191,7 @@ python scripts/sp500_run_baseline_comparison.py --bars data/us_equities/processe
 | random-grammar-seed2 | 54 | 54 | 9.93 | 2.54 | 10 | 10.7% | 5/10 |
 | random-grammar-seed3 | 54 | 54 | 12.41 | 2.54 | 10 | 28.2% | 7/10 |
 | random-grammar-seed4 | 54 | 54 | 9.11 | 2.54 | 10 | 18.3% | 7/10 |
-| Alpha101 (published) | 49 | 49 | 12.11 | 2.50 | 10 | 58.8% | 10/10 |
+| Alpha101 (published) | 50 | 50 | 12.11 | 2.51 | 10 | 58.8% | 10/10 |
 
 Three things fall out of it.
 
@@ -218,14 +218,19 @@ it is not beating a decade-old reference.
 
 ### The memorization test
 
-For every LLM candidate, its highest rank-space correlation to any of the 49
-transcribed Alpha101 signals, computed on the same panel through the same
-evaluator:
+For every LLM candidate, its highest correlation to any of the 50 transcribed
+Alpha101 signals, computed on the same panel through the same evaluator. The
+statistic is the **mean over days of the per-day cross-sectional rank
+correlation** — the same within-day quantity the IC itself measures:
 
 | set | candidates | max corr | median corr | share > 0.9 |
 |---|---:|---:|---:|---:|
-| Claude Fable 5 | 20 | 0.878 | 0.417 | **0%** |
-| Claude Sonnet 5 | 53 | 0.949 | 0.412 | **4%** (2 of 53) |
+| Claude Fable 5 | 20 | 0.878 | 0.416 | **0%** |
+| Claude Sonnet 5 | 53 | 0.950 | 0.412 | **4%** (2 of 53) |
+
+A pooled correlation over all date-symbol pairs is reported alongside it in
+`memorization_test.csv`. The two never differ by more than 0.011 here, so
+nothing below turns on the choice.
 
 Outright restatement is rare, and that is the more interesting result: the LLM
 is mostly *not* reciting Alpha101, it is producing genuinely different
@@ -265,14 +270,31 @@ cutoff. The table above is that argument reproduced on this repo's own factors.
   matched to the Sonnet set's call-count and depth distribution so the null is a
   search of the same size and shape. About a quarter of raw draws evaluate to a
   constant cross-section and are replaced, using the feature panel only, never
-  forward returns.
+  forward returns. Each drawn set is written to
+  `data/baseline_comparison/random_grammar_seed{N}.txt` so the null is
+  inspectable and can be re-scored through `sp500_score_mined_factors.py` like
+  any other candidate file.
 - **Alpha101** (`configs/alpha101_us.txt`) transcribes Kakushadze
-  ([arXiv 1601.00991](https://arxiv.org/abs/1601.00991)). 49 of 101 are
-  expressible here; the other 52 need `vwap`, `cap` or an industry
-  classification the panel does not carry, and each is listed in place with its
-  reason. Operator mappings and the deliberate deviations — epsilon-guarded
-  division, `TS_ARGMAX` orientation, rounded non-integer windows — are documented
-  in the file header.
+  ([arXiv 1601.00991](https://arxiv.org/abs/1601.00991)). 50 of 101 are
+  expressible here. Of the 51 dropped, 49 need `vwap`, `cap` or an industry
+  classification the panel does not carry; the remaining two are alpha029, which
+  nests 12 deep against the sanitizer's cap of 10, and alpha060, whose two
+  `scale()` calls normalise over different cross-sections and so cannot be
+  factored out. Every drop is listed in place with its reason.
+
+  The file is **checked against the paper mechanically**, not from memory: all
+  101 published formulas were parsed and compared, confirming that no transcribed
+  alpha needs a field the panel lacks, that every drop-for-field claim matches
+  the published formula, and that all numeric constants match exactly. Operator
+  mappings and the deliberate deviations — epsilon-guarded division, `TS_ARGMAX`
+  orientation, rounded non-integer windows, and the `adv{d}` reading below — are
+  documented in the file header.
+
+  One deviation is an interpretation rather than a transcription. The paper
+  defines `adv{d}` as average daily *dollar* volume and `volume` as shares, but
+  alphas 7, 17, 21, 39 and 43 compare or divide one against the other. Taken
+  literally alpha007 evaluates to -1 on 99% of observations, so those five use
+  average daily *share* volume.
 
 ## Universe
 

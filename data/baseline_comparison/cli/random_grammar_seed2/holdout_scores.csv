@@ -1,0 +1,11 @@
+expression,model,is_mean_ic,oos_mean_ic,oos_ic_tstat,oos_ic_days,sign_held,retention
+"-(BOUND(MIN(($close - $high), $return), -3, 3))",random-grammar-seed2,0.011502390873357823,0.011196354322496927,3.597736044867638,2009,True,0.9733936575247372
+"-((BOUND(($close - $high), -3, 3) - IF_ELSE((($low - $close) >= 0), ($return * $low), ($high - $dollar_volume))))",random-grammar-seed2,0.010113301347580568,-0.0008576470434228964,-0.43163732947318456,2009,False,-0.08480386512244822
+"-((ZSCORE($close) * (MAX($return, ($open * $close)) / (TS_STD($dollar_volume, 10) + 1e-8))))",random-grammar-seed2,0.009432848254652654,-0.0024819975878216417,-1.2397503123988918,2009,False,-0.2631228151685174
+"-(IF((BOUND($dollar_volume, -3, 3) > 0), TS_COVARIANCE(($close - $open), $dollar_volume, 252), CS_RANK($close)))",random-grammar-seed2,0.00705399172241764,0.002111752584126172,1.087022967112802,2009,True,0.29936986988728753
+"-((TS_COV($open, ($return + $dollar_volume), 3) - MAX(($high - $volume), ($volume - $volume))))",random-grammar-seed2,0.006773440871757528,0.003234657843238903,1.5970303553634297,2009,True,0.4775501705087735
+"-(POWER(TS_COV(($return * $close), $close, 21), 2))",random-grammar-seed2,0.009665573122729228,-0.005306015973965567,-1.7854322593829408,2009,False,-0.5489603054668453
+"(ZSCORE(($close * $low)) - IF((($return * $high) < 0), ($low - $close), IF((($return - $low) > 0), ($return + $close), ($dollar_volume * $high))))",random-grammar-seed2,0.006865309766582572,0.006546206160337874,2.19299148998968,2009,True,0.9535194161525006
+"-(TS_DECAY_LINEAR($volume, 252))",random-grammar-seed2,0.008699445195777401,0.00459265960680532,1.7587064377333261,2009,True,0.5279255749590259
+"-(TS_PRODUCT(BOUND(TS_COV($close, MIN($volume, $high), 21), -3, 3), 10))",random-grammar-seed2,0.0061596317475428285,-0.006927256475165672,-2.3882373104610464,2009,False,-1.1246218538842132
+"-((MIN($dollar_volume, TS_STD($dollar_volume, 5)) - POWER($close, 3)))",random-grammar-seed2,0.005311113592745473,-0.0020651695971431946,-1.0123632267357823,2009,False,-0.3888392822108041
