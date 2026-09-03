@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import re
 from dataclasses import dataclass, field
 
@@ -93,6 +94,20 @@ class ExpressionSanitizer:
         "book_per_share", "earnings_per_share", "accrual_gap",
     }
 
+    # Argument counts the evaluator enforces. Kept here rather than imported
+    # from expression_evaluator so this gate stays dependency-free (that module
+    # pulls in pandas/numpy); test_arity_table_matches_the_evaluator asserts the
+    # two never drift apart.
+    FUNCTION_ARITY = {
+        "ABS": 1, "BOUND": 3, "COUNT": 2, "CS_DEMEAN": 1, "CS_RANK": 1,
+        "CS_ZSCORE": 1, "DELAY": 2, "DELTA": 2, "EMA": 2, "IF": 3, "IF_ELSE": 3,
+        "LN": 1, "LOG": 1, "POWER": 2, "RANK": 1, "SIGN": 1, "SQRT": 1,
+        "TS_ARGMAX": 2, "TS_ARGMIN": 2, "TS_CORR": 3, "TS_COV": 3,
+        "TS_COVARIANCE": 3, "TS_DECAY_LINEAR": 2, "TS_DELTA": 2, "TS_MAX": 2,
+        "TS_MEAN": 2, "TS_MIN": 2, "TS_PRODUCT": 2, "TS_RANK": 2, "TS_STD": 2,
+        "TS_SUM": 2, "ZSCORE": 1,
+    }
+
     BLOCKED_TOKENS = (
         "import ",
         "exec(",
@@ -169,6 +184,7 @@ class ExpressionSanitizer:
                 errors.append(f"Unknown function: {func}")
 
         errors.extend(self._identifier_errors(cleaned))
+        errors.extend(self._arity_errors(cleaned))
 
         return SanitizeResult(valid=len(errors) == 0, cleaned=cleaned, errors=errors)
 
@@ -208,4 +224,32 @@ class ExpressionSanitizer:
                 )
             else:
                 errors.append(f"Unknown identifier: {name}")
+        return errors
+
+    def _arity_errors(self, cleaned: str) -> list[str]:
+        """Reject calls with the wrong number of arguments.
+
+        Parsed exactly the way the evaluator parses -- same "$x" -> "field_x"
+        rewrite, same ast.parse -- so the two cannot disagree about what the
+        expression means. Without this, ZSCORE($return, 10) passed the gate and
+        died during scoring with "ZSCORE expects 1 argument(s), got 2", which
+        wastes a full evaluation pass over the panel to learn something
+        knowable from the text alone.
+        """
+        transformed = re.sub(r"\$([A-Za-z_][A-Za-z0-9_]*)", r"field_\1", cleaned)
+        try:
+            tree = ast.parse(transformed, mode="eval")
+        except SyntaxError as exc:
+            return [f"Cannot parse expression: {exc.msg}"]
+
+        errors: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Name):
+                continue
+            name = node.func.id.upper()
+            expected = self.FUNCTION_ARITY.get(name)
+            if expected is not None and len(node.args) != expected:
+                errors.append(
+                    f"{name} expects {expected} argument(s), got {len(node.args)}"
+                )
         return errors

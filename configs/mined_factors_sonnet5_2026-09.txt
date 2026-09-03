@@ -1,0 +1,118 @@
+# Candidate factor expressions mined by Claude Sonnet 5 (Anthropic), 2026-09.
+# Status: CANDIDATES ONLY. None are validated; they must pass
+# scripts/sp500_score_mined_factors.py (IC t-stat + correlation dedup) on
+# research-grade data and then the walk-forward promotion gates before any
+# use. Generated from configs/prompts/factor_gen_us.txt after that prompt was
+# corrected to state the $field convention; the previous prompt produced
+# expressions the evaluator could not resolve.
+#
+# Baseline for comparison: configs/mined_factors_claude_2026-08.txt (Claude Fable 5).
+
+# Medium-term price momentum normalized by volatility persists across regimes
+TS_DELTA($close, 21) / (TS_STD($close, 21) + 1e-8)
+# Short-horizon overextension mean-reverts within a week
+-TS_DELTA($close, 5) / (TS_STD($close, 5) + 1e-8)
+# Realized volatility level proxies for expected future risk and return dispersion
+TS_STD($return, 21)
+# Average dollar volume captures a liquidity premium/discount across large caps
+TS_MEAN($dollar_volume, 21)
+# Accelerating volume relative to baseline signals building interest ahead of price moves
+TS_DELTA(TS_MEAN($volume, 5), 5) / (TS_MEAN($volume, 21) + 1e-8)
+# Wider intraday range relative to price indicates elevated uncertainty and forward volatility
+($high - $low) / ($close + 1e-8)
+# Momentum is stronger and more reliable in more liquid names
+CS_RANK(TS_DELTA($close, 21)) * CS_RANK(TS_MEAN($dollar_volume, 21))
+# Negative correlation between returns and volume signals distribution and predicts reversal
+-TS_CORR($return, $volume, 10)
+# Position within the recent trading range predicts near-term continuation
+($close - TS_MIN($low, 21)) / (TS_MAX($high, 21) - TS_MIN($low, 21) + 1e-8)
+# Risk-adjusted quarterly momentum (Sharpe-like) is more robust than raw price change
+TS_MEAN($return, 63) / (TS_STD($return, 63) + 1e-8)
+# Sustained co-movement of price and volume confirms trend strength
+TS_CORR($close, $volume, 21)
+# Downside volatility alone captures asymmetric risk priced by investors
+TS_STD(MIN($return, 0), 21)
+# Overnight gap size predicts intraday continuation or reversal at the open
+($open - DELAY($close, 1)) / (DELAY($close, 1) + 1e-8)
+# Amihud-style illiquidity ratio predicts a compensating return premium
+TS_MEAN(ABS($return) / ($dollar_volume + 1e-8), 21)
+# Recency-weighted recent returns better capture actionable momentum than equal-weighted averages
+TS_DECAY_LINEAR($return, 10)
+# Short-term price drops on high volume are more likely to mean-revert
+CS_RANK(-TS_DELTA($close, 5)) * CS_RANK($volume)
+# Expanding trading range over time signals a volatility regime shift
+TS_DELTA(TS_MEAN(($high - $low) / ($close + 1e-8), 5), 5)
+# Abnormal volume surges relative to baseline flag information events driving forward returns
+$volume / (TS_MEAN($volume, 21) + 1e-8)
+# Percentile rank of price over the past year captures long-term trend strength
+TS_RANK($close, 252)
+# Cross-sectional divergence between short and long volatility flags regime transitions predictive of returns
+CS_ZSCORE(TS_STD($return, 5)) - CS_ZSCORE(TS_STD($return, 21))
+# Vol-scaled 21-day price momentum predicts continuation over the next holding period
+CS_RANK(TS_DELTA($close, 21) / (TS_STD($return, 21) + 1e-8))
+# Sharp 3-day price moves relative to typical volatility tend to mean-revert next day
+-CS_RANK(TS_DELTA($close, 3) / (TS_STD($close, 21) + 1e-8))
+# Daily returns that are unusually large versus their own 10-day distribution revert
+-CS_RANK(ZSCORE($return, 10))
+# Low realized volatility names outperform high volatility names (low-vol anomaly)
+-CS_RANK(TS_STD($return, 21))
+# Stocks with stable (low variance) volatility regimes outperform stocks with erratic volatility
+-CS_RANK(TS_STD(TS_STD($return, 5), 21))
+# Amihud-style price impact: less liquid names command a return premium
+CS_RANK(TS_MEAN(ABS($return) / ($dollar_volume + 1e-8), 21))
+# Accelerating average volume signals building attention and forward price continuation
+CS_RANK(TS_DELTA(TS_MEAN($volume, 5), 5) / (TS_MEAN($volume, 21) + 1e-8))
+# Positive 10-day price-volume correlation indicates trend strength confirmed by participation
+CS_RANK(TS_CORR($close, $volume, 10))
+# Persistently wide intraday ranges signal risk and are penalized versus tight-range stocks
+-CS_RANK(TS_MEAN(($high - $low) / ($close + 1e-8), 21))
+# Stocks closing near their 21-day high-low range extreme (Stochastic position) continue trending
+CS_RANK(($close - TS_MIN($low, 21)) / (TS_MAX($high, 21) - TS_MIN($low, 21) + 1e-8))
+# Overnight gap versus prior close predicts next-day directional continuation
+CS_RANK(($open - DELAY($close, 1)) / (DELAY($close, 1) + 1e-8))
+# Momentum signal strengthened when concentrated in low-volatility names
+CS_RANK(TS_DELTA($close, 21) / (TS_STD($return, 21) + 1e-8)) * CS_RANK(-TS_STD($return, 21))
+# Price moves accompanied by rising volume are more persistent than unconfirmed moves
+CS_RANK(TS_DELTA($close, 10)) * CS_RANK(TS_DELTA($volume, 10))
+# Recency-weighted average of past returns forecasts near-term continuation
+CS_RANK(TS_DECAY_LINEAR($return, 10))
+# Short EMA crossing above long EMA signals an emerging uptrend
+CS_RANK((EMA($close, 5) - EMA($close, 21)) / (EMA($close, 21) + 1e-8))
+# Asymmetric downside volatility exceeding upside volatility predicts underperformance
+CS_RANK(TS_STD(IF($return < 0, $return, 0), 21) / (TS_STD(IF($return > 0, $return, 0), 21) + 1e-8))
+# Price drops accompanied by dollar-volume spikes reflect liquidity-driven overreaction that reverts
+CS_RANK(-TS_DELTA($close, 3) / (TS_STD($close, 21) + 1e-8)) * CS_RANK(TS_DELTA($dollar_volume, 3) / (TS_MEAN($dollar_volume, 21) + 1e-8))
+# Volatility-normalized 1-month momentum predicts near-term outperformance
+CS_RANK(TS_DELTA($close, 21) / (TS_STD($close, 21) + 1e-8))
+# Extreme 3-day price moves mean-revert over the next few sessions
+-CS_RANK(TS_DELTA($close, 3))
+# Higher-liquidity names carry a persistent risk-adjusted return edge
+CS_RANK(TS_MEAN($dollar_volume, 21))
+# Accelerating short-term volume relative to trend signals building conviction
+CS_RANK(TS_MEAN($volume, 5) / (TS_MEAN($volume, 21) + 1e-8))
+# Narrow daily trading ranges precede calmer, positively drifting returns
+-CS_RANK(($high - $low) / ($close + 1e-8))
+# Returns that co-move positively with volume reflect informed accumulation
+CS_RANK(TS_CORR($return, $volume, 10))
+# Sharp 5-day moves scaled by volatility overshoot and revert
+-CS_RANK(TS_DELTA($close, 5) / (TS_STD($return, 21) + 1e-8))
+# Positive price acceleration (second derivative) extends into further gains
+CS_RANK(TS_DELTA(TS_DELTA($close, 5), 5))
+# Net directional volume flow over 10 days predicts continued price direction
+CS_RANK(TS_SUM(SIGN($return) * $volume, 10))
+# Compression in daily range volatility precedes stable positive drift
+-CS_RANK(TS_STD($high - $low, 10))
+# Large overnight gaps tend to partially reverse during the trading day
+-CS_RANK(($open - DELAY($close, 1)) / (DELAY($close, 1) + 1e-8))
+# Closing near the day's high versus low signals buying pressure that persists
+CS_RANK((($close - $low) - ($high - $close)) / ($high - $low + 1e-8))
+# Rising average volume over two weeks reflects growing participation and future returns
+CS_RANK(TS_DELTA(TS_MEAN($volume, 5), 10))
+# Volume rising with narrowing range signals quiet accumulation ahead of moves
+-CS_RANK(TS_CORR($volume, $high - $low, 10))
+# Intraday return in excess of the overnight gap captures persistent session-driven alpha
+CS_RANK((($close - $open) / ($open + 1e-8)) - (($open - DELAY($close, 1)) / (DELAY($close, 1) + 1e-8)))
+# Stable, low-variance trading volume is associated with steadier positive returns
+-CS_RANK(TS_STD($volume, 21) / (TS_MEAN($volume, 21) + 1e-8))
+# Rank-correlation between price level and volume over 10 days signals trend strength
+RANK(TS_CORR(RANK($close), RANK($volume), 10))

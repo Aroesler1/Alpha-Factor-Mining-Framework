@@ -1,3 +1,5 @@
+import pytest
+
 from quantaalpha_us.factors.expression_sanitizer import ExpressionSanitizer
 
 
@@ -96,3 +98,43 @@ def test_gate_agrees_with_evaluator_on_shipped_factors():
         except Exception:
             evaluates = False
         assert accepted == evaluates, f"gate/evaluator disagree on {expression!r}"
+
+
+def test_wrong_arity_rejected_at_the_gate():
+    """The expression that survived the gate and died mid-scoring.
+
+    ZSCORE takes one argument. `-CS_RANK(ZSCORE($return, 10))` passed the
+    sanitizer during a live mining run and raised "ZSCORE expects 1
+    argument(s), got 2" only once the evaluator reached it, wasting a full pass
+    over a 4.87M-row panel to learn something knowable from the text.
+    """
+    result = ExpressionSanitizer().sanitize("-CS_RANK(ZSCORE($return, 10))")
+    assert not result.valid
+    assert any("ZSCORE expects 1" in e for e in result.errors)
+    assert ExpressionSanitizer().sanitize("-CS_RANK(ZSCORE($return))").valid
+
+
+def test_arity_table_matches_the_evaluator():
+    """The gate's arity table must not drift from what the evaluator enforces.
+
+    The table is duplicated rather than imported so this module stays free of
+    the pandas/numpy dependency the evaluator carries; this test is what keeps
+    the copy honest. It calls every function with one argument too many and
+    asserts the evaluator objects.
+    """
+    import numpy as np
+    import pandas as pd
+    from quantaalpha_us.factors.expression_evaluator import ExpressionEvaluator, ExpressionError
+
+    dates = pd.date_range("2024-01-01", periods=40)
+    syms = ["A", "B"]
+    rng = np.random.default_rng(0)
+    panels = {
+        f: pd.DataFrame(rng.random((40, 2)) + 100, index=dates, columns=syms).astype("float64")
+        for f in ("open", "high", "low", "close", "adj_close", "volume", "dollar_volume", "return")
+    }
+    evaluator = ExpressionEvaluator(panels)
+    for name, expected in ExpressionSanitizer.FUNCTION_ARITY.items():
+        args = ", ".join(["$close"] * (expected + 1))
+        with pytest.raises(ExpressionError, match=f"{name} expects {expected} argument"):
+            evaluator.evaluate(f"{name}({args})")
