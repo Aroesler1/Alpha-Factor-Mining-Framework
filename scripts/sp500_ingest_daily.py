@@ -114,9 +114,8 @@ def _backfill_missing_days(
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Daily ingest of US bars from EODHD bulk endpoint.")
-    parser.add_argument("--api-token", default=None)
-    parser.add_argument("--source", choices=["auto", "crsp", "eodhd"], default="auto")
+    parser = argparse.ArgumentParser(description="Daily ingest of US bars from CRSP.")
+    parser.add_argument("--source", choices=["auto", "crsp"], default="auto")
     parser.add_argument("--date", default=str(date.today()), help="Trading date to ingest (YYYY-MM-DD)")
     parser.add_argument("--bars-file", default="data/us_equities/processed/daily_bars.parquet")
     parser.add_argument("--membership-file", default="data/us_equities/reference/sp500_membership_daily.parquet")
@@ -134,8 +133,6 @@ def main() -> None:
 
     client = build_market_data_client(
         source=args.source,
-        eodhd_api_token=args.api_token,
-        eodhd_cache_dir=str(resolve_from_us_root("data/us_equities/raw/cache", US_ROOT)),
     )
     quality = DataQualityGate()
     use_cache = not args.no_cache

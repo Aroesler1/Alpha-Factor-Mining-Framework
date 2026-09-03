@@ -29,8 +29,7 @@ from quantaalpha_us.data.membership import (  # noqa: E402
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build point-in-time S&P 500 membership artifacts.")
-    parser.add_argument("--api-token", default=None, help="EODHD API token. Defaults to EODHD_API_TOKEN env var.")
-    parser.add_argument("--source", choices=["auto", "crsp", "eodhd"], default="auto")
+    parser.add_argument("--source", choices=["auto", "crsp"], default="auto")
     parser.add_argument("--start-date", default="2000-01-03")
     parser.add_argument("--end-date", default=str(date.today()))
     parser.add_argument("--membership-out", default="data/us_equities/reference/sp500_membership_daily.parquet")
@@ -49,8 +48,6 @@ def main() -> None:
 
     client = build_market_data_client(
         source=args.source,
-        eodhd_api_token=args.api_token,
-        eodhd_cache_dir=str(resolve_from_us_root("data/us_equities/raw/cache", US_ROOT)),
     )
 
     constituents = client.get_sp500_constituents_historical(use_cache=not args.no_cache)

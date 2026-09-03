@@ -91,10 +91,13 @@ uses — daily bars, bulk daily bars, and the ticker mapping — is served by
 delisting returns and point-in-time membership that a plain vendor EOD feed
 does not.
 
-`build_market_data_client(source="auto")` prefers CRSP whenever
-`CRSP_USERNAME`/`CRSP_API_KEY` are set and falls back to EODHD only if they are
-not. EODHD is retained as a fallback so the pipeline is runnable without a WRDS
-entitlement, but it needs your own token and is not used here.
+`build_market_data_client()` returns that client and raises if
+`CRSP_USERNAME`/`CRSP_API_KEY` are absent, rather than silently degrading to a
+weaker source. An EODHD fallback was removed in 2026-09: it was never the source
+of any published result here, and a second vendor path that nothing exercises is
+a maintenance and credential liability rather than resilience.
+
+Running this repo therefore requires a WRDS entitlement.
 
 CRSP data is licensed and is deliberately not committed: the repo ships code,
 derived factor scores and figures, not raw vendor data.
@@ -136,8 +139,6 @@ It is not a high-frequency system and does not attempt to model intraday microst
 
 - `quantaalpha_us/data`
   - CRSP/WRDS client
-  - EODHD client
-  - market-data source selection
   - membership builders
   - data quality checks
 
@@ -219,7 +220,6 @@ Beyond LLM usage, this project uses and demonstrates familiarity with:
 - `pandas` for feature engineering, panel manipulation, and research outputs
 - parquet-based data artifacts for reproducible local research datasets
 - CRSP through WRDS for research-grade historical membership and price data
-- EODHD as an optional alternative market-data vendor and fallback path
 - Alpaca REST APIs for paper and live execution
 - YAML-based configuration for research, mining, and trading profiles
 - CLI-oriented orchestration through standalone Python entrypoints
@@ -243,10 +243,8 @@ The project supports two operating modes.
 
 ### Research-Grade Mode
 
-This mode uses a proper historical membership history sourced from either:
-
-- CRSP through WRDS, or
-- EODHD when both historical price data and fundamentals are available
+This mode uses a proper historical membership history sourced from CRSP
+through WRDS.
 
 This is the intended mode for serious walk-forward research.
 
@@ -265,7 +263,7 @@ It is useful operationally, but it is not treated as a substitute for true histo
 
 At the current stage, the repo supports:
 
-- CRSP market data via WRDS (EODHD remains as an optional fallback for users without WRDS)
+- CRSP market data via WRDS
 - historical or approximate S&P 500 membership construction
 - daily bar backfill and coverage reporting
 - baseline signal generation
@@ -323,7 +321,6 @@ Typical environment configuration includes:
 
 - `CRSP_USERNAME`
 - `CRSP_API_KEY`
-- `EODHD_API_TOKEN` *(optional; only needed for the EODHD fallback)*
 - `OPENAI_BASE_URL`
 - `OPENAI_API_KEY`
 - `ALPACA_PAPER_API_KEY`
@@ -345,7 +342,6 @@ The central pipeline artifacts are:
 The project interacts with several real external systems:
 
 - WRDS / CRSP for research-grade historical data
-- EODHD for alternative historical and daily market data
 - OpenAI-compatible chat-completions endpoints for factor mining
 - Alpaca for execution and account state
 
@@ -363,7 +359,6 @@ Source selection can also be made explicit:
 
 ```bash
 python scripts/sp500_build_membership.py --source crsp
-python scripts/sp500_build_membership.py --source eodhd   # needs your own EODHD token
 python scripts/sp500_build_membership_approx.py
 ```
 
@@ -412,7 +407,7 @@ python scripts/sp500_orchestrator.py --mode live --run-date 2026-03-10 --dry-run
 The main CLI entrypoints correspond to specific parts of the pipeline:
 
 - `scripts/sp500_build_membership.py`
-  - builds historical membership from CRSP or EODHD
+  - builds historical membership from CRSP
 - `scripts/sp500_build_membership_approx.py`
   - builds a constant-membership approximation from a current snapshot
 - `scripts/sp500_backfill_history.py`

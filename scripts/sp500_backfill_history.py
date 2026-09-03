@@ -44,8 +44,7 @@ def _save_dataframe(df: pd.DataFrame, path: Path) -> Path:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Backfill historical bars for S&P 500 historical constituents.")
-    parser.add_argument("--api-token", default=None)
-    parser.add_argument("--source", choices=["auto", "crsp", "eodhd"], default="auto")
+    parser.add_argument("--source", choices=["auto", "crsp"], default="auto")
     parser.add_argument(
         "--membership-file",
         default="data/us_equities/reference/sp500_membership_daily.parquet",
@@ -85,8 +84,6 @@ def main() -> None:
 
     client = build_market_data_client(
         source=args.source,
-        eodhd_api_token=args.api_token,
-        eodhd_cache_dir=str(resolve_from_us_root("data/us_equities/raw/cache", US_ROOT)),
     )
 
     rows: list[pd.DataFrame] = []
