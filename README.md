@@ -83,6 +83,22 @@ A Deflated Sharpe computed against the survivors understates the search by exact
 python scripts/sp500_score_mined_factors.py --bars <panel> --trace data/trace.jsonl
 ```
 
+## Universe
+
+Scoring is restricted to **point-in-time S&P 500 membership**, joined on
+`(date, permno)` before any factor is computed.
+
+This is not cosmetic. `daily_bars.parquet` carries every name that was ever a
+constituent over 2000-2025, which is ~745 names per date against the index's
+~502. On 2005-06-15, 315 of the 814 names in the panel (39%) were not in the
+S&P 500 that day, and they are future members as often as former ones. Ranking
+a factor cross-sectionally over that panel scores it on a universe no strategy
+could have held, and it inflates significance: the best candidate measured
+|t| = 8.21 unfiltered against 7.56 filtered.
+
+`--membership none` scores the raw panel and says so loudly; a missing
+membership file is a hard error rather than a silent skip.
+
 ## Data source
 
 Market data comes from **CRSP via WRDS**. Every call site this repo actually
@@ -107,7 +123,7 @@ derived factor scores and figures, not raw vendor data.
 - Factor provenance is not recorded: `factor_scores.csv` carries no column
   identifying which model generated a candidate, so two mining runs cannot be
   compared after the fact.
-- Factor quality, not tooling, is the binding limit: mean ICs of 0.003-0.010 are weak, and the large t-statistics come from 6,517 trading days rather than effect size.
+- Factor quality, not tooling, is the binding limit: mean ICs of 0.003-0.011 are weak against 0.02-0.05 for a decent published factor, and the large t-statistics (up to 7.6) come from ~6,500 trading days rather than effect size.
 - Research quality still depends on the quality and timeliness of external data providers
 - Daily signals and retail-oriented execution assumptions are intentionally conservative and do not represent intraday HFT infrastructure
 - LLM factor generation is bounded and audited, but it still needs human judgment before production use
