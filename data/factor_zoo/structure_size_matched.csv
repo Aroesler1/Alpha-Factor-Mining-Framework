@@ -1,0 +1,87 @@
+expression,set,tree_size,model_shared,model_edit,n_matched_random,random_shared_median,random_edit_median,shared_excess,edit_excess
+"TS_MEAN($close, 21) / (TS_STD($close, 21) + 1e-8)",claude-fable-5,9,1,6,85,1.0,8.0,0.0,-2.0
+"RANK(TS_DELTA($close, 5) / (TS_STD($close, 21) * $close + 1e-8))",claude-fable-5,12,1,9,74,1.0,10.0,0.0,-1.0
+"RANK(($close / DELAY($close, 21) - 1) - ($close / DELAY($close, 5) - 1))",claude-fable-5,16,3,13,57,1.0,14.0,2.0,-1.0
+"RANK(EMA($return, 10) / (TS_STD($return, 21) + 1e-8))",claude-fable-5,10,1,8,86,1.0,9.0,0.0,-1.0
+"RANK(TS_DECAY_LINEAR($return, 10))",claude-fable-5,4,1,6,40,1.0,7.0,0.0,-1.0
+"RANK(TS_RANK($close, 63))",claude-fable-5,4,1,6,40,1.0,7.0,0.0,-1.0
+"-RANK(TS_DELTA($close, 3) / (DELAY($close, 3) + 1e-8))",claude-fable-5,11,3,8,81,1.0,10.0,2.0,-2.0
+"-RANK(TS_MAX($return, 5))",claude-fable-5,5,1,8,60,1.0,7.0,0.0,1.0
+"-RANK(ABS($close / DELAY($close, 1) - 1))",claude-fable-5,10,3,10,86,1.0,9.0,2.0,1.0
+"-RANK(TS_STD($return, 21))",claude-fable-5,5,1,8,60,1.0,7.0,0.0,1.0
+-RANK(($high - $low) / ($close + 1e-8)),claude-fable-5,9,3,8,85,1.0,8.0,2.0,0.0
+"RANK(($close - TS_MIN($low, 21)) / (TS_MAX($high, 21) - TS_MIN($low, 21) + 1e-8))",claude-fable-5,16,1,9,57,1.0,14.0,0.0,-5.0
+"-RANK(TS_ARGMAX($close, 21))",claude-fable-5,5,1,8,60,1.0,7.0,0.0,1.0
+"RANK(TS_MEAN($dollar_volume, 5) / (TS_MEAN($dollar_volume, 21) + 1e-8))",claude-fable-5,10,1,8,86,1.0,9.0,0.0,-1.0
+"RANK(TS_CORR($close, $volume, 10))",claude-fable-5,5,1,4,60,1.0,7.0,0.0,-3.0
+"-RANK(TS_CORR(RANK($close), RANK($volume), 5))",claude-fable-5,8,2,4,79,1.0,8.0,1.0,-4.0
+-RANK(LOG($dollar_volume + 1)),claude-fable-5,6,1,9,73,1.0,7.0,0.0,2.0
+"IF(TS_MEAN($return, 5) > 0, RANK($volume), -RANK($volume))",claude-fable-5,11,2,10,81,1.0,10.0,1.0,0.0
+"RANK(TS_COV($return, CS_DEMEAN($return), 21))",claude-fable-5,6,1,8,73,1.0,7.0,0.0,1.0
+"RANK(MIN(TS_RANK($volume, 10), TS_RANK($close, 10)))",claude-fable-5,8,3,8,79,1.0,8.0,2.0,0.0
+"TS_DELTA($close, 21) / (TS_STD($close, 21) + 1e-8)",claude-sonnet-5,9,1,6,85,1.0,8.0,0.0,-2.0
+"-TS_DELTA($close, 5) / (TS_STD($close, 5) + 1e-8)",claude-sonnet-5,10,1,7,86,1.0,9.0,0.0,-2.0
+"TS_STD($return, 21)",claude-sonnet-5,3,1,7,34,1.0,7.0,0.0,0.0
+"TS_MEAN($dollar_volume, 21)",claude-sonnet-5,3,1,7,34,1.0,7.0,0.0,0.0
+"TS_DELTA(TS_MEAN($volume, 5), 5) / (TS_MEAN($volume, 21) + 1e-8)",claude-sonnet-5,11,1,9,81,1.0,10.0,0.0,-1.0
+($high - $low) / ($close + 1e-8),claude-sonnet-5,7,3,6,83,1.0,7.0,2.0,-1.0
+"CS_RANK(TS_DELTA($close, 21)) * CS_RANK(TS_MEAN($dollar_volume, 21))",claude-sonnet-5,9,1,8,85,1.0,8.0,0.0,0.0
+"-TS_CORR($return, $volume, 10)",claude-sonnet-5,5,1,4,60,1.0,7.0,0.0,-3.0
+"($close - TS_MIN($low, 21)) / (TS_MAX($high, 21) - TS_MIN($low, 21) + 1e-8)",claude-sonnet-5,15,1,8,57,1.0,13.0,0.0,-5.0
+"TS_MEAN($return, 63) / (TS_STD($return, 63) + 1e-8)",claude-sonnet-5,9,1,7,85,1.0,8.0,0.0,-1.0
+"TS_CORR($close, $volume, 21)",claude-sonnet-5,4,1,5,40,1.0,7.0,0.0,-2.0
+"TS_STD(MIN($return, 0), 21)",claude-sonnet-5,5,1,7,60,1.0,7.0,0.0,0.0
+"($open - DELAY($close, 1)) / (DELAY($close, 1) + 1e-8)",claude-sonnet-5,11,5,7,81,1.0,10.0,4.0,-3.0
+"TS_MEAN(ABS($return) / ($dollar_volume + 1e-8), 21)",claude-sonnet-5,8,1,9,79,1.0,8.0,0.0,1.0
+"TS_DECAY_LINEAR($return, 10)",claude-sonnet-5,3,1,6,34,1.0,7.0,0.0,-1.0
+"CS_RANK(-TS_DELTA($close, 5)) * CS_RANK($volume)",claude-sonnet-5,8,2,7,79,1.0,8.0,1.0,-1.0
+"TS_DELTA(TS_MEAN(($high - $low) / ($close + 1e-8), 5), 5)",claude-sonnet-5,11,3,10,81,1.0,10.0,2.0,0.0
+"$volume / (TS_MEAN($volume, 21) + 1e-8)",claude-sonnet-5,7,1,7,83,1.0,7.0,0.0,0.0
+"TS_RANK($close, 252)",claude-sonnet-5,3,1,6,34,1.0,7.0,0.0,-1.0
+"CS_ZSCORE(TS_STD($return, 5)) - CS_ZSCORE(TS_STD($return, 21))",claude-sonnet-5,9,3,10,85,1.0,8.0,2.0,2.0
+"CS_RANK(TS_DELTA($close, 21) / (TS_STD($return, 21) + 1e-8))",claude-sonnet-5,10,1,7,86,1.0,9.0,0.0,-2.0
+"-CS_RANK(TS_DELTA($close, 3) / (TS_STD($close, 21) + 1e-8))",claude-sonnet-5,11,3,8,81,1.0,10.0,2.0,-2.0
+"-CS_RANK(ZSCORE($return, 10))",claude-sonnet-5,5,1,7,60,1.0,7.0,0.0,0.0
+"-CS_RANK(TS_STD($return, 21))",claude-sonnet-5,5,1,8,60,1.0,7.0,0.0,1.0
+"-CS_RANK(TS_STD(TS_STD($return, 5), 21))",claude-sonnet-5,7,3,9,83,1.0,7.0,2.0,2.0
+"CS_RANK(TS_MEAN(ABS($return) / ($dollar_volume + 1e-8), 21))",claude-sonnet-5,9,1,8,85,1.0,8.0,0.0,0.0
+"CS_RANK(TS_DELTA(TS_MEAN($volume, 5), 5) / (TS_MEAN($volume, 21) + 1e-8))",claude-sonnet-5,12,1,10,74,1.0,10.0,0.0,0.0
+"CS_RANK(TS_CORR($close, $volume, 10))",claude-sonnet-5,5,1,4,60,1.0,7.0,0.0,-3.0
+"-CS_RANK(TS_MEAN(($high - $low) / ($close + 1e-8), 21))",claude-sonnet-5,11,3,9,81,1.0,10.0,2.0,-1.0
+"CS_RANK(($close - TS_MIN($low, 21)) / (TS_MAX($high, 21) - TS_MIN($low, 21) + 1e-8))",claude-sonnet-5,16,1,9,57,1.0,14.0,0.0,-5.0
+"CS_RANK(($open - DELAY($close, 1)) / (DELAY($close, 1) + 1e-8))",claude-sonnet-5,12,5,8,74,1.0,10.0,4.0,-2.0
+"CS_RANK(TS_DELTA($close, 21) / (TS_STD($return, 21) + 1e-8)) * CS_RANK(-TS_STD($return, 21))",claude-sonnet-5,16,1,13,57,1.0,14.0,0.0,-1.0
+"CS_RANK(TS_DELTA($close, 10)) * CS_RANK(TS_DELTA($volume, 10))",claude-sonnet-5,9,4,6,85,1.0,8.0,3.0,-2.0
+"CS_RANK(TS_DECAY_LINEAR($return, 10))",claude-sonnet-5,4,1,6,40,1.0,7.0,0.0,-1.0
+"CS_RANK((EMA($close, 5) - EMA($close, 21)) / (EMA($close, 21) + 1e-8))",claude-sonnet-5,14,1,10,70,1.0,12.0,0.0,-2.0
+"CS_RANK(TS_STD(IF($return < 0, $return, 0), 21) / (TS_STD(IF($return > 0, $return, 0), 21) + 1e-8))",claude-sonnet-5,20,3,18,43,1.0,16.0,2.0,2.0
+"CS_RANK(-TS_DELTA($close, 3) / (TS_STD($close, 21) + 1e-8)) * CS_RANK(TS_DELTA($dollar_volume, 3) / (TS_MEAN($dollar_volume, 21) + 1e-8))",claude-sonnet-5,22,3,17,24,1.0,18.0,2.0,-1.0
+"CS_RANK(TS_DELTA($close, 21) / (TS_STD($close, 21) + 1e-8))",claude-sonnet-5,10,1,7,86,1.0,9.0,0.0,-2.0
+"-CS_RANK(TS_DELTA($close, 3))",claude-sonnet-5,5,3,8,60,1.0,7.0,2.0,1.0
+"CS_RANK(TS_MEAN($dollar_volume, 21))",claude-sonnet-5,4,1,7,40,1.0,7.0,0.0,0.0
+"CS_RANK(TS_MEAN($volume, 5) / (TS_MEAN($volume, 21) + 1e-8))",claude-sonnet-5,10,1,8,86,1.0,9.0,0.0,-1.0
+-CS_RANK(($high - $low) / ($close + 1e-8)),claude-sonnet-5,9,3,8,85,1.0,8.0,2.0,0.0
+"CS_RANK(TS_CORR($return, $volume, 10))",claude-sonnet-5,5,1,4,60,1.0,7.0,0.0,-3.0
+"-CS_RANK(TS_DELTA($close, 5) / (TS_STD($return, 21) + 1e-8))",claude-sonnet-5,11,1,8,81,1.0,10.0,0.0,-2.0
+"CS_RANK(TS_DELTA(TS_DELTA($close, 5), 5))",claude-sonnet-5,6,1,8,73,1.0,7.0,0.0,1.0
+"CS_RANK(TS_SUM(SIGN($return) * $volume, 10))",claude-sonnet-5,7,1,8,83,1.0,7.0,0.0,1.0
+"-CS_RANK(TS_STD($high - $low, 10))",claude-sonnet-5,7,3,8,83,1.0,7.0,2.0,1.0
+"-CS_RANK(($open - DELAY($close, 1)) / (DELAY($close, 1) + 1e-8))",claude-sonnet-5,13,5,9,71,1.0,11.0,4.0,-2.0
+CS_RANK((($close - $low) - ($high - $close)) / ($high - $low + 1e-8)),claude-sonnet-5,14,7,6,70,1.0,12.0,6.0,-6.0
+"CS_RANK(TS_DELTA(TS_MEAN($volume, 5), 10))",claude-sonnet-5,6,1,7,73,1.0,7.0,0.0,0.0
+"-CS_RANK(TS_CORR($volume, $high - $low, 10))",claude-sonnet-5,8,3,8,79,1.0,8.0,2.0,0.0
+"CS_RANK((($close - $open) / ($open + 1e-8)) - (($open - DELAY($close, 1)) / (DELAY($close, 1) + 1e-8)))",claude-sonnet-5,20,7,15,43,1.0,16.0,6.0,-1.0
+"-CS_RANK(TS_STD($volume, 21) / (TS_MEAN($volume, 21) + 1e-8))",claude-sonnet-5,11,1,9,81,1.0,10.0,0.0,-1.0
+"RANK(TS_CORR(RANK($close), RANK($volume), 10))",claude-sonnet-5,7,2,4,83,1.0,7.0,1.0,-3.0
+RANK($roa),fundamental-2026-09,2,0,6,15,1.0,6.0,-1.0,0.0
+RANK($roe),fundamental-2026-09,2,0,6,15,1.0,6.0,-1.0,0.0
+RANK($operating_margin),fundamental-2026-09,2,0,6,15,1.0,6.0,-1.0,0.0
+RANK($book_per_share / ($close + 1e-8)),fundamental-2026-09,6,3,6,73,1.0,7.0,2.0,-1.0
+RANK($earnings_per_share / ($close + 1e-8)),fundamental-2026-09,6,3,6,73,1.0,7.0,2.0,-1.0
+-RANK($leverage),fundamental-2026-09,3,0,6,34,1.0,7.0,-1.0,-1.0
+RANK($asset_turnover),fundamental-2026-09,2,0,6,15,1.0,6.0,-1.0,0.0
+-RANK($accrual_gap),fundamental-2026-09,3,0,6,34,1.0,7.0,-1.0,-1.0
+"RANK(TS_DELTA($roa, 63))",fundamental-2026-09,4,0,7,40,1.0,7.0,-1.0,0.0
+"RANK(TS_DELTA($operating_margin, 63))",fundamental-2026-09,4,0,7,40,1.0,7.0,-1.0,0.0
+"RANK($roa) - RANK(TS_STD($return, 21))",fundamental-2026-09,7,1,8,83,1.0,7.0,0.0,1.0
+"RANK($book_per_share / ($close + 1e-8)) - RANK(TS_MEAN($return, 63))",fundamental-2026-09,11,3,9,81,1.0,10.0,2.0,-1.0

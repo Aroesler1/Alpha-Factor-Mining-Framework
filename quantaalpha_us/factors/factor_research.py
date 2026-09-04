@@ -14,6 +14,7 @@ the caller's thresholds, not hidden.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
@@ -183,7 +184,13 @@ def mean_daily_rank_correlation(a: np.ndarray, b: np.ndarray, *,
     mask = np.isfinite(a) & np.isfinite(b)
     am = np.where(mask, a, np.nan).astype(np.float64)
     bm = np.where(mask, b, np.nan).astype(np.float64)
-    with np.errstate(invalid="ignore"):
+    # A date on which the two signals share no valid name is an empty slice, and
+    # nanmean warns about it through the warnings module rather than through
+    # errstate. The all-NaN rows are already excluded from the result below by
+    # the min_cross_section filter, so the warning is noise -- and it is emitted
+    # once per pair, which drowns a test run comparing an archive of factors.
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         ac = am - np.nanmean(am, axis=1, keepdims=True)
         bc = bm - np.nanmean(bm, axis=1, keepdims=True)
         cov = np.nansum(ac * bc, axis=1)

@@ -210,12 +210,33 @@ conclusion, which is exactly why there are five.
 
 **The iid null is far too generous, and the empirical one is the real bar.**
 E[max |t|] over N independent standard-normal draws is about 2.5 at N = 54. Every
-set here, pure noise included, clears 9. The gap is daily IC autocorrelation:
-the t-statistic divides by a standard error that assumes 4,500 independent days
-and does not get them. So `|t| = 8` is not evidence of anything on this panel —
-the random-grammar row says noise reaches 9 to 12 routinely. This also
-reframes the |t| figures under [Known limits](#known-limits): they are below the
-noise floor of a search this size, not merely inflated by sample length.
+set here clears 9. So `|t| = 8` is not evidence of anything on this panel: the
+random-grammar row says a same-sized search over the same grammar reaches 9 to
+12 routinely. This also reframes the |t| figures under
+[Known limits](#known-limits): they are below the noise floor of a search this
+size, not merely inflated by sample length.
+
+*Corrected 2026-09.* An earlier version of this section attributed that gap to
+daily IC autocorrelation, on the reasoning that the t-statistic assumes 4,500
+independent days and does not get them. That explanation is measurably wrong.
+Newey-West standard errors (Bartlett, 21 lags) across a 397-factor pool move the
+median t-statistic by a factor of **1.03** and the pool maximum from 10.88 to
+10.27; see [How many survive a factor-zoo
+correction](#how-many-survive-a-factor-zoo-correction). Daily cross-sectional
+rank ICs are close to serially uncorrelated here. The correct explanation is
+that the random expressions are not noise: they are functions of price and
+volume, so many of them are restatements of size, liquidity or short-term
+reversal and carry genuine non-zero mean ICs. The iid null is a null of zero
+mean, and these draws do not have zero mean.
+
+**A multiple-testing correction does not rescue the model sets.** Applying
+Harvey-Liu-Zhu, Benjamini-Hochberg, a Romano-Wolf stepdown and an empirical
+random-grammar bar to the whole 397-factor pool, random expressions survive at a
+HIGHER rate than the model's factors (41% against 28% under Romano-Wolf), and
+Alpha101 at 54%. Among the survivors, 42% mention `$dollar_volume` and those
+have a median holdout retention of -29%. The full table is in
+[How many survive a factor-zoo
+correction](#how-many-survive-a-factor-zoo-correction).
 
 **Alpha101 wins.** A factor set published in 2015, transcribed mechanically, is
 at least as good as both LLM sets on every column: highest in-sample |t| of the
@@ -245,6 +266,22 @@ expressions that are no better than random ones. The two Sonnet candidates above
 `CS_RANK((($close - $open) / $open) - (($open - DELAY($close, 1)) / DELAY($close, 1)))`
 against alpha033 — so a mining run that reports them as discoveries is
 overcounting its own novelty, but only twice.
+
+Correlation is one axis and it is not enough on its own: it misses a
+restatement whose numbers happen to differ, and it flags coincidences.
+[Is the model paraphrasing](#is-the-model-paraphrasing) adds the independent
+structural axis, and finds a case correlation missed: a Sonnet candidate that
+reuses a seven-node sub-expression of a published alpha whole.
+
+**No paper in the LLM-for-alpha literature this repo builds on runs a control
+like this.** QuantaAlpha (arXiv 2602.07085), ReEvo (NeurIPS 2024), FunSearch,
+AlphaEvolve and LLaMEA all evaluate mined factors or heuristics against
+benchmarks, and none of them checks whether the model reproduced something from
+its training data rather than discovering it. Every one of them mines with a
+model trained on the literature it is being tested against. That check is cheap
+once a published reference set is transcribed onto the same panel, it is two
+statistics rather than one, and it is the difference between "the model found
+this" and "the model remembered this".
 
 ### What this does not show
 
@@ -302,6 +339,279 @@ cutoff. The table above is that argument reproduced on this repo's own factors.
   literally alpha007 evaluates to -1 on 99% of observations, so those five use
   average daily *share* volume.
 
+## How many survive a factor-zoo correction
+
+The [baseline table](#does-the-llm-add-anything) shows that a best-of-N
+t-statistic means nothing without knowing N. This is the next question, asked
+one factor at a time: pool everything this repo has scored, and ask which
+individual factors clear a hurdle that knows how many were tried.
+
+The pool is 397 scorable factors on a common 3,843-day sample (2001-04 to
+2017-12; the missing first year is rolling-window warm-up, shared by every
+factor so the maximum is a maximum over one sample):
+
+| group | sets | factors |
+|---|---|---:|
+| model | Fable 5, Sonnet 5, fundamental | 85 |
+| random | five seeded random-grammar draws | 262 |
+| published | Alpha101 | 50 |
+
+```bash
+python scripts/sp500_build_factor_pool.py   # once, ~66 min, caches every IC series
+python scripts/sp500_factor_zoo_hurdle.py
+```
+
+### The first surprise: the HAC correction barely matters
+
+Every t-statistic below is a Newey-West t (Bartlett kernel, 21 lags) rather than
+the iid t the scoring CLI prints, because daily ICs are not independent draws.
+The expectation going in was that this alone would deflate the repo's headline
+figures. It does not:
+
+- median |iid t| / |NW t| across the pool: **1.03**
+- pool maximum: **10.88** iid against **10.27** Newey-West
+
+Daily cross-sectional rank ICs turn out to be close to serially uncorrelated on
+this panel. The inflation in these t-statistics is multiplicity, not
+autocorrelation, and saying so is more useful than the tidier story.
+
+### The hurdles
+
+| hurdle | critical value | what it controls |
+|---|---:|---|
+| random-grammar max \|t\| | 3.51 | the 95th percentile of the bootstrapped maximum \|t\| over the 262 random factors, under a zero-mean null with the same block structure |
+| Harvey, Liu and Zhu (2016) | 3.00 | the flat hurdle the cross-sectional literature adopted |
+| Benjamini-Hochberg, 5% | p <= 0.033 | false discovery rate across the pool |
+| Romano-Wolf stepdown, 5% | 3.65 falling to 3.54 | family-wise error, bootstrapped so the pool's cross-correlation counts |
+
+### Survivors
+
+| group | n | random-max | HLZ | BH | Romano-Wolf |
+|---|---:|---:|---:|---:|---:|
+| Fable 5 | 20 | 6 | 10 | 12 | 6 |
+| Sonnet 5 | 53 | 12 | 19 | 25 | 12 |
+| fundamental | 12 | 6 | 7 | 8 | 6 |
+| **all model** | **85** | **24** | **36** | **45** | **24** |
+| **random grammar** | **262** | **109** | **123** | **186** | **107** |
+| **Alpha101** | **50** | **28** | **29** | **38** | **27** |
+
+Random expressions clear every hurdle at a HIGHER rate than the model's factors:
+41% against 28% under Romano-Wolf. The published set clears at 54%.
+
+That is not a bug in the correction. It is what a correction cannot do: these
+random expressions are not noise. They are functions of price and volume, so a
+great many of them are restatements of size, liquidity or short-term reversal,
+and those have genuine non-zero mean ICs in sample. A multiple-testing
+correction asks "is this mean distinguishable from zero", not "is this an
+exploitable edge".
+
+### What the survivors turn out to be
+
+158 factors clear both the empirical bar and Romano-Wolf. **66 of them (42%)
+mention `$dollar_volume`.** Their median holdout IC retention is **-29%**; for
+the other 92 it is **+59%**. The correction's survivors are dominated by one
+effect, spelled many ways, and that effect reverses out of sample.
+
+### The holdout, with the training sign frozen
+
+| hurdle | group | survivors | sign held | median retention | median NW t out of sample |
+|---|---|---:|---:|---:|---:|
+| random-max | model | 24 | 20/24 | 55.0% | 1.44 |
+| random-max | random | 109 | 64/109 | 26.4% | 1.01 |
+| random-max | Alpha101 | 28 | **28/28** | **79.0%** | **2.24** |
+| Romano-Wolf | model | 24 | 20/24 | 55.0% | 1.44 |
+| Romano-Wolf | random | 107 | 64/107 | 34.5% | 1.02 |
+| Romano-Wolf | Alpha101 | 27 | **27/27** | 77.5% | 2.06 |
+
+Alpha101 is the only group whose survivors keep their sign unanimously and
+retain most of their in-sample IC. The model's survivors sit between the
+published set and the null, closer to the null.
+
+### The fundamental factors are counted 63 times
+
+Compustat fundamentals change on the report date and then sit still. A factor
+built on `$roa` takes one new value per firm per quarter, but the daily IC
+series scores it on every trading day, so the same observation is counted about
+63 times. The mean IC is unaffected; the t-statistic is not, because it divides
+by the square root of an n that counts repeats.
+
+Re-scored on one IC date per quarter, which is the coarsest grid on which
+consecutive observations carry new fundamental information:
+
+```bash
+python scripts/sp500_fundamental_quarterly.py
+```
+
+| | daily | quarterly |
+|---|---:|---:|
+| factors with \|t\| > 2 | **10 of 12** | **0 of 12** |
+| median t retention against the iid daily t | | **0.11** |
+| square-root-rule reference, 1/sqrt(63) | | 0.13 |
+
+The retention lands on the sqrt rule almost exactly, which is what "the daily
+t-statistic is counting the same observation 63 times" predicts. Not one of the
+twelve fundamental factors survives being measured on independent observations.
+
+Quarter-end is not a neutral day, so the test is repeated at the first, middle
+and last trading day of each quarter: median \|t\| of 0.52, 0.33 and 0.41, with
+0, 1 and 0 of twelve above 2. The result is not a calendar artifact.
+
+## Did Alpha101 decay after publication
+
+Kakushadze posted "101 Formulaic Alphas" (arXiv:1601.00991) on 2015-12-31, which
+gives a pre/post split that needs no judgement call. The 50 transcribed formulas
+are scored on 2000-01 to 2015-12, each one's sign is frozen there, and the same
+expressions are scored on 2016-01 to 2025-12. The model's own factors and the
+random-grammar draws run through the identical split as controls; neither has a
+publication date, so their ratio is ordinary out-of-sample decay with nothing
+publication-specific in it.
+
+```bash
+python scripts/sp500_alpha101_decay.py
+```
+
+| set | n | mean IC pre | mean IC post | post/pre | median ratio | sign held |
+|---|---:|---:|---:|---:|---:|---:|
+| Alpha101 | 50 | +0.00645 | +0.00502 | **77.8%** | 69.8% | 90% |
+| model (control) | 85 | +0.00529 | +0.00330 | 62.4% | 59.2% | 81% |
+| random grammar (control) | 260 | +0.00540 | +0.00276 | 51.0% | 48.1% | 65% |
+
+| set | block-bootstrap change in mean IC | 95% CI | p |
+|---|---:|---|---:|
+| Alpha101 | -0.00143 | [-0.00435, +0.00164] | **0.320** |
+| model (control) | -0.00199 | [-0.00388, -0.00003] | 0.042 |
+| random grammar (control) | -0.00264 | [-0.00480, -0.00055] | 0.015 |
+
+The paired-t and Wilcoxon figures the script also prints treat the factors
+within a set as independent observations. They are not, because each set is full
+of restatements of one idea, so those p-values are optimistic. The block
+bootstrap resamples dates and is the one to read.
+
+**Alpha101 lost 22% of its mean IC after publication, and that loss is not
+statistically distinguishable from zero.** McLean and Pontiff (2016, *Journal of
+Finance* 71(1), 5-32) put post-publication decay at 58% across the predictors
+they study, of which they attribute roughly 26 points to in-sample overfitting
+that any out-of-sample window would expose.
+
+Two readings, and the controls decide between them. If the 22% were
+publication-driven, the controls should decay less, because nobody published
+them. They decay MORE: 38% for the model's factors and 49% for random
+expressions, both significant. So the honest reading is that Alpha101 decayed by
+less than ordinary out-of-sample attrition on this universe, and there is no
+publication effect visible here at all. That is a weaker result than McLean and
+Pontiff's, on one published set, one universe and one execution convention, and
+it is what the data says.
+
+## Signal horizon
+
+"Score it at horizon h" has two readings, and they answer different questions:
+
+- **lagged**: IC against the single day from open T+h to open T+h+1. How long
+  does the factor stay informative? This curve decays, and the half-life is read
+  off it.
+- **cumulative**: IC against open T+1 to open T+1+h. How much of the move does
+  it capture? This curve usually rises, because the return accumulates faster
+  than the edge decays.
+
+They coincide at h = 1, where both reduce to the repo's standard label.
+
+```bash
+python scripts/sp500_ic_horizon_curve.py
+```
+
+Median |mean IC| on the training window:
+
+| set | convention | h=1 | h=5 | h=10 | h=21 | h=63 |
+|---|---|---:|---:|---:|---:|---:|
+| Alpha101 | lagged | 0.00607 | 0.00168 | 0.00146 | 0.00129 | 0.00232 |
+| Alpha101 | cumulative | 0.00607 | 0.00757 | 0.00742 | 0.00719 | 0.00695 |
+| model | lagged | 0.00474 | 0.00289 | 0.00213 | 0.00247 | 0.00409 |
+| model | cumulative | 0.00474 | 0.00913 | 0.01064 | 0.01038 | 0.01248 |
+| random | lagged | 0.00509 | 0.00457 | 0.00402 | 0.00370 | 0.00474 |
+| random | cumulative | 0.00509 | 0.00727 | 0.01026 | 0.01292 | 0.03166 |
+
+Median Newey-West t on the lagged curve tells the same story more sharply:
+Alpha101 goes 4.50, 1.57, 1.04, 1.06, 1.93 across the five horizons, while the
+random pool barely moves (2.86, 2.83, 2.62, 2.47, 2.99).
+
+That contrast is the finding. Alpha101's edge is genuinely short-horizon and
+genuinely decays: 42 of 50 halve inside the 63-day grid, with a median half-life
+of **4.0 days**, and its cumulative curve is flat past a week, so there is
+nothing to be gained by holding longer. The random pool does not decay at all,
+because 185 of 270 of its members are not predicting anything time-varying, they
+are slow-moving characteristics: their cumulative IC keeps climbing to 0.032 at
+63 days, which is what a size or liquidity exposure looks like measured this
+way. The model's factors sit between the two: 43 of 85 never halve, median
+half-life 4.4 days for those that do.
+
+This half-life is what the evolutionary loop's archive uses for its horizon
+axis. On the pool as a whole the buckets come out lopsided (77 fast, 15 medium,
+177 slow among hurdle survivors), which is worth knowing before reading a niche
+count as evidence of diversity.
+
+## Is the model paraphrasing
+
+The [memorization test](#the-memorization-test) asks this in signal space: how
+correlated is each mined factor with its closest published alpha? That measure
+misses a restatement whose numbers happen to differ, and it flags coincidences,
+because everything in equities co-moves. `quantaalpha_us/factors/ast_tools.py`
+adds an independent axis that never touches the data: canonicalise both
+expressions into trees, and measure the largest complete sub-expression they
+share and the Zhang-Shasha edit distance between them.
+
+Reproduce in ten seconds, with no WRDS entitlement:
+
+```bash
+python scripts/sp500_structure_report.py
+```
+
+Neither statistic means anything alone, because a longer expression shares more
+with everything by accident. The comparison is against random-grammar draws,
+which never saw the literature, so whatever they score is the level of
+structural overlap that costs nothing to explain.
+
+| statistic (median) | model sets | random grammar | permutation p |
+|---|---:|---:|---:|
+| largest shared subtree with any Alpha101, nodes | 1.00 | 1.00 | 1.000 |
+| that subtree as a share of the candidate's own tree | 0.20 | 0.10 | < 0.0001 |
+| edit distance to the nearest Alpha101 formula | 8.00 | 10.00 | 0.017 |
+| normalized edit distance | 0.46 | 0.55 | < 0.0001 |
+| tree size, nodes | 8.00 | 12.00 | < 0.0001 |
+
+The model's factors sit structurally closer to the published set on every
+measure. Most of that is size: the model writes shorter expressions, and a
+shorter expression is closer to everything. Pairing each model factor with the
+random draws within two nodes of its own size removes almost all of it:
+
+- median excess shared subtree against size-matched random: **+0.00 nodes**
+- median excess edit distance against size-matched random: **-1.00 edits**
+- model factors sharing a strictly larger subtree than their size-matched
+  random median: **30 of 86**
+
+So the typical mined factor is not a paraphrase. The tail is a different matter,
+and the tail is what a paraphrase check is for:
+
+| shared subtree of at least | model sets | random grammar |
+|---|---:|---:|
+| 3 nodes | 30% | 12% |
+| 4 nodes | 7% | 0% |
+| 5 nodes | 6% | 0% |
+| 6 nodes | 2% | 0% |
+| 7 nodes | 2% | 0% |
+
+Above four nodes the random baseline is empty and the model is not. The largest
+overlap found is seven nodes: Sonnet 5's
+`CS_RANK((($close - $low) - ($high - $close)) / ($high - $low + 1e-8))` shares
+the whole close-location-value numerator with a transcribed Alpha101 formula,
+six edits away from it. That is a restatement of a published construct, offered
+without attribution.
+
+This is why the evolutionary loop gates on structure and not only on
+correlation: a candidate sharing a complete sub-expression of five or more nodes
+with any published alpha is rejected before it is scored. That threshold rejects
+6% of the existing model-mined factors and 0% of the random ones, so it is a
+real constraint rather than decoration.
+
 ## Universe
 
 Scoring is restricted to **point-in-time S&P 500 membership**, joined on
@@ -336,6 +646,35 @@ Running this repo therefore requires a WRDS entitlement.
 
 CRSP data is licensed and is deliberately not committed: the repo ships code,
 derived factor scores and figures, not raw vendor data.
+
+### Which CRSP tape
+
+`crsp_client._daily_table()` resolves the daily stock file to **`crsp.dsf_v2`**
+, CRSP's Flat File Format 2.0, the "CIZ" tape , and falls back to the legacy
+`crsp.dsf` only when `dsf_v2` is absent from the entitlement. Berkeley's WRDS
+subscription carries `dsf_v2`, so every number in this repo is on CIZ.
+
+This matters more than a table name usually would. CRSP shipped the last release
+of the legacy SIZ tape in January 2025 and now updates only CIZ, and the two are
+not the same history. Schwarz, Walter and Weiss, *Rewriting CRSP's History:
+Impact of Altered Monthly Returns on Asset Pricing*, Journal of Financial and
+Quantitative Analysis (2026), measure the switch: **9.62%** of monthly returns
+change by more than 1 bp, mostly because payouts now reinvest on the ex-date
+rather than at month end, and **11.43%** of monthly long-short returns move by
+more than 10 bp, concentrated in early periods, NBER recessions and
+return-based sorts. Their headline finding is reassuring for a study like this
+one (average premia and their significance survive the switch), but the
+per-portfolio differences are large enough that a result reproduced on the other
+tape will not match to the last basis point.
+
+Two consequences worth stating plainly:
+
+- Anyone reproducing these ICs on `crsp.dsf` should expect small differences,
+  and they are the tape, not the code.
+- The sibling trend-following repo (`VOO_Backtest`) is built on the **legacy SIZ
+  tape**, with CIZ wired in only as a comparison path (`crsp_v2.py`). Numbers
+  are therefore not directly comparable between the two repos, and neither is
+  wrong.
 
 ## Known limits
 
