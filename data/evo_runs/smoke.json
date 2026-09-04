@@ -1,0 +1,122 @@
+{
+  "effort": "low",
+  "envelope": {
+    "api_error_status": null,
+    "duration_api_ms": 49683,
+    "duration_ms": 49722,
+    "fast_mode_disabled_reason": "sdk_opt_in_required",
+    "fast_mode_state": "off",
+    "is_error": false,
+    "modelUsage": {
+      "claude-haiku-4-5-20251001": {
+        "cacheCreationInputTokens": 8486,
+        "cacheReadInputTokens": 27789,
+        "canonicalModel": "claude-haiku-4-5",
+        "contextWindow": 200000,
+        "costBasis": "list",
+        "costUSD": 0.0441749,
+        "inputTokens": 9,
+        "maxOutputTokens": 32000,
+        "outputTokens": 4883,
+        "provider": "firstParty",
+        "thinkingTokens": 4482,
+        "webSearchRequests": 0
+      }
+    },
+    "num_turns": 2,
+    "permission_denials": [],
+    "queued_turn_count": 0,
+    "result": "{\"candidates\":[{\"expression\":\"-RANK(TS_DELTA($close, 3) / (TS_STD($close, 10) + 1e-8))\",\"rationale\":\"Volatility-normalized short-term momentum mean-reverts as liquidity providers correct transient overreaction\",\"parent_ids\":[],\"changed_node\":\"\"},{\"expression\":\"TS_DELTA($close, 5) * (($close - TS_MIN($close, 20)) / (TS_MAX($close, 20) - TS_MIN($close, 20) + 1e-8))\",\"rationale\":\"Directional momentum amplifies when price reaches range extremes due to reflexivity and order clustering at support/resistance levels\",\"parent_ids\":[],\"changed_node\":\"\"},{\"expression\":\"RANK(TS_DELTA($close, 2) - TS_DELTA($close, 20)) / (TS_STD($close, 20) + 1e-8)\",\"rationale\":\"Fast-slow momentum divergence predicts return continuation as market regimes persist within their current volatility structure\",\"parent_ids\":[],\"changed_node\":\"\"}]}",
+    "session_id": "<redacted>",
+    "stop_reason": "tool_use",
+    "structured_output": {
+      "candidates": [
+        {
+          "changed_node": "",
+          "expression": "-RANK(TS_DELTA($close, 3) / (TS_STD($close, 10) + 1e-8))",
+          "parent_ids": [],
+          "rationale": "Volatility-normalized short-term momentum mean-reverts as liquidity providers correct transient overreaction"
+        },
+        {
+          "changed_node": "",
+          "expression": "TS_DELTA($close, 5) * (($close - TS_MIN($close, 20)) / (TS_MAX($close, 20) - TS_MIN($close, 20) + 1e-8))",
+          "parent_ids": [],
+          "rationale": "Directional momentum amplifies when price reaches range extremes due to reflexivity and order clustering at support/resistance levels"
+        },
+        {
+          "changed_node": "",
+          "expression": "RANK(TS_DELTA($close, 2) - TS_DELTA($close, 20)) / (TS_STD($close, 20) + 1e-8)",
+          "parent_ids": [],
+          "rationale": "Fast-slow momentum divergence predicts return continuation as market regimes persist within their current volatility structure"
+        }
+      ]
+    },
+    "subagent_stats": {
+      "by_type": {},
+      "completed": 0,
+      "failed": 0,
+      "killed": {
+        "parent": 0,
+        "system": 0,
+        "user": 0
+      },
+      "max_depth": 0,
+      "refused": {
+        "budget": 0,
+        "concurrency_limit": 0,
+        "depth_limit": 0
+      },
+      "requested": {
+        "background": 0,
+        "foreground": 0,
+        "unset": 0
+      },
+      "spawned": 0,
+      "spawned_by_subagents": 0,
+      "started_in_background": 0
+    },
+    "subtype": "success",
+    "terminal_reason": "completed",
+    "time_to_request_ms": 34,
+    "total_cost_usd": 0.0441749,
+    "ttft_ms": 46812,
+    "ttft_stream_ms": 782,
+    "type": "result",
+    "usage": {
+      "cache_creation": {
+        "ephemeral_1h_input_tokens": 8486,
+        "ephemeral_5m_input_tokens": 0
+      },
+      "cache_creation_input_tokens": 8486,
+      "cache_read_input_tokens": 27789,
+      "inference_geo": "not_available",
+      "input_tokens": 9,
+      "iterations": [
+        {
+          "cache_creation": {
+            "ephemeral_1h_input_tokens": 8486,
+            "ephemeral_5m_input_tokens": 0
+          },
+          "cache_creation_input_tokens": 8486,
+          "cache_read_input_tokens": 27789,
+          "input_tokens": 9,
+          "output_tokens": 4883,
+          "type": "message"
+        }
+      ],
+      "output_tokens": 4883,
+      "output_tokens_details": {
+        "thinking_tokens": 4482
+      },
+      "server_tool_use": {
+        "web_fetch_requests": 0,
+        "web_search_requests": 0
+      },
+      "service_tier": "standard",
+      "speed": "standard"
+    },
+    "uuid": "<redacted>"
+  },
+  "model": "claude-haiku-4-5-20251001",
+  "prompt_hash": "c0eef573cfa3ff2b"
+}

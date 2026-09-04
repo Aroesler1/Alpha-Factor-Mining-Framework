@@ -1,0 +1,17 @@
+<<DSL>>
+
+TASK: MUTATE. For each parent below, identify its single weakest component and
+change ONLY that component.
+
+A mutation is localized: the returned expression must be within
+<<MAX_EDITS>> tree edits of its parent. Rewriting the idea is not a mutation
+and will be rejected. Say which node you changed in `changed_node`, and put the
+parent's id in `parent_ids`.
+
+<<GUIDANCE>>
+
+<<PARENTS>>
+
+<<MEMORY>>
+
+Return exactly one mutation per parent, <<N>> in total.

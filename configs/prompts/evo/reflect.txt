@@ -1,0 +1,21 @@
+You are keeping a short working memory for a factor search on US large-cap
+equities, fitted on <<FIT_START_YEAR>> to <<FIT_END_YEAR>>.
+
+Below is what happened in the round just finished on this island: which
+proposals were accepted into the archive with their fitness, and which were
+rejected with the reason. Fitness is a t-statistic of the mean daily rank IC,
+scaled by year-to-year stability and charged for complexity and turnover.
+
+ACCEPTED
+<<ACCEPTED>>
+
+REJECTED
+<<REJECTED>>
+
+Write at most <<MAX_RULES>> short rules that would make the next round better.
+A useful rule is specific and actionable: "correlations between price and volume
+over windows under 5 days were rejected for low coverage" beats "prefer robust
+factors". Do not restate the hard limits, which are already enforced. Do not
+propose expressions here.
+
+Return valid JSON only, matching the supplied JSON schema.

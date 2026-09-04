@@ -1,0 +1,17 @@
+<<DSL>>
+
+TASK: CROSSOVER. Each pair below holds two parents from DIFFERENT archive
+niches. Return one child per pair that genuinely combines them.
+
+A child must keep a complete sub-expression of at least <<MIN_SHARED>> nodes
+from EACH parent, checked mechanically; a child that is really just one parent
+with cosmetic changes is rejected. Put both parent ids in `parent_ids`.
+
+In the rationale, state the fusion logic: what does the combination capture that
+neither parent captures alone? A conditioning variable, a normaliser, an
+interaction. If you cannot name one, the pair is a bad cross and you should say
+so in the rationale rather than force it.
+
+<<PAIRS>>
+
+Return exactly one child per pair, <<N>> in total.

@@ -612,6 +612,176 @@ with any published alpha is rejected before it is scored. That threshold rejects
 6% of the existing model-mined factors and 0% of the random ones, so it is a
 real constraint rather than decoration.
 
+## The evolutionary loop
+
+Everything above is one-shot mining: one prompt, N expressions, score them,
+done. The answer it gives is "the model does not beat random expressions from
+the same grammar". That is a real answer to a narrow question, and it is not the
+question the literature reports gains on. FunSearch, AlphaEvolve, ReEvo, LLaMEA
+and QuantaAlpha all iterate: propose, score, feed the score back, propose again.
+So `quantaalpha_us/evo/` builds the loop, and builds the controls that say
+whether the loop is what helps.
+
+### Windows, fixed before anything ran
+
+| window | dates | what may read it |
+|---|---|---|
+| fit | 2000-01-01 to 2013-12-31 | the model, through prompts |
+| validation | 2014-01-01 to 2017-12-31 | the early-stop rule and two threshold choices, never a prompt |
+| holdout | 2018-01-01 to 2025-12-31 | one script, once, at the end |
+
+No prompt contains a number computed on validation or holdout, or a date after
+2013-12-31. That is enforced by a test that scans every prompt the loop actually
+wrote to disk (`tests/test_evo_prompt_audit.py`), not just the templates, plus a
+structural check that the module building feedback blocks cannot import the
+scorer.
+
+### Fitness
+
+One scalar on the fit window, plus hard gates:
+
+```
+fitness = |t| * stability  -  complexity penalty  -  turnover penalty
+```
+
+`t` is the mean daily rank IC over a circular block-bootstrap standard error
+(block 21), not the iid t: daily ICs are autocorrelated and the iid standard
+error is most of why this repo's headline t-statistics were never what they
+looked like. `stability` is the fraction of the 14 fit years with a positive
+oriented IC, floored at 0.5. The complexity penalty charges 0.1 per base field
+beyond three and per free constant beyond one. The turnover penalty charges 0.5
+bp of daily return per unit of one-way daily turnover and then divides by the
+IC's standard error to put it in t units; that conversion is a stated
+convention, not a derivation, and it is written down in
+`quantaalpha_us/evo/config.py` so it can be argued with.
+
+### Gates, cheapest first
+
+| # | gate | cost |
+|---|---|---|
+| 1 | sanitizer | text |
+| 2 | complexity: length <= 200, fields <= 5, free constants <= 4, depth <= 6 | text |
+| 3 | shared subtree with any Alpha101 formula below the limit | text |
+| 4 | shared subtree with any archive member below the limit | text |
+| 5 | coverage >= 0.9 of the fit panel | one panel pass |
+| 6 | absolute rank correlation against every archive member | one rank pass |
+
+Then a cheap-then-full screen: score on 2011-2013 first, discard below |t| = 1,
+and only then pay for the full fit window and the horizon grid. Most rejections
+happen before a DataFrame is touched.
+
+Gates 3 and 6 carry the only two numbers in the whole design that were chosen
+rather than fixed. They are swept over {4, 5, 6} nodes and {0.6, 0.7, 0.8}
+correlation on the **validation** window, by replaying the GP arm's saved
+responses under all nine combinations at zero model cost, and then frozen
+(`scripts/sp500_evo_threshold_sweep.py`). Sweeping on the GP arm rather than a
+model arm keeps the thresholds from being tuned on the thing being measured.
+
+### Archive
+
+MAP-Elites over 18 niches: (IC half-life: fast < 5 days, medium 5-21, slow > 21)
+x (data family: price and volume, fundamentals, mixed) x (turnover: low, high,
+split at the median daily turnover of the 50 transcribed Alpha101 formulas on
+the fit window). Eight members per niche, so 144 factors at capacity. A plain
+"keep the best 20" loop converges on one idea restated twenty ways, because the
+best idea's neighbours are the easiest improvements to find; niches make a slow
+fundamental factor stop competing with a fast price factor for the same slot.
+
+### Islands and operators
+
+Three islands (price trend and reversal; liquidity and volume; fundamentals and
+quality), each with a working population of 30 and its own reflection memory.
+Parents come from a size-3 tournament over the island plus the archive, weighted
+2x for members of niches holding fewer than three factors and 0.5x for members
+older than two rounds. The top five of an island survive each round
+unconditionally and every other slot is re-drawn. Every two rounds each island
+receives the top two archive members from the other islands; every four rounds
+the island with the lowest mean fitness is reseeded across niches with a
+direction prompt that says so.
+
+Four operators, each one batched call per island per round, each returning JSON
+against a schema:
+
+- **EXPLORE** (10): given the island's direction, the archive's niche counts
+  including the empty ones, the reflection memory and a ban list of
+  sub-expressions the published Alpha101 set leans on, propose new factors
+  aimed at the emptiest niches, with an economic rationale each.
+- **MUTATE** (10): given one parent and its full diagnostics, change the single
+  weakest component. The result must be within three tree edits of the parent,
+  checked by `ast_tools`; larger edits are rejected and logged.
+- **CROSSOVER** (8): given two parents from different niches, return a child
+  that keeps a complete sub-expression of at least three nodes from each,
+  checked mechanically.
+- **SIMPLIFY** (2): given a parent flagged by the complexity gate, return
+  something simpler that keeps at least 80% of the parent's fit-window |IC|.
+
+Plus one reflection call per island per round, which asks for at most eight
+short rules from the round's accepted and rejected candidates. The memory holds
+twelve, oldest dropped, and is included in every EXPLORE and MUTATE prompt.
+
+That is five calls per island per round: about 15 a round and about 120 for a
+full eight-round arm.
+
+Stopping: at most 8 rounds, with an early stop when the archive's top-20
+equal-weight mean validation IC fails to improve for two consecutive rounds. The
+curve is logged either way.
+
+### The design is not invented here
+
+Each piece is included because an existing ablation says it earns its place, and
+each is measured again here rather than assumed:
+
+- **Mutation is the load-bearing operator.** QuantaAlpha (arXiv 2602.07085),
+  Table 2: removing trajectory mutation costs 0.0292 IC and 9.81 points of
+  annualised excess return, the largest drop of the three components ablated.
+  Removing crossover costs 0.0070 IC and 2.82 points; removing diversified
+  planning initialisation costs 0.0005 IC but 7.78 points of return. That is why
+  MUTATE gets the same batch size as EXPLORE here, and why it is the operator
+  with a mechanically enforced locality constraint.
+- **Long-term reflection is worth a little.** ReEvo (NeurIPS 2024,
+  arXiv 2402.01145) ablates it on ACO heuristics for TSP100: the full system
+  scores 8.40 white-box and 8.96 black-box, against 8.61 and 9.32 without
+  long-term reflections. A gain of roughly 2 to 4%, real but small. It is
+  included with that expectation, and the feedback-ablation arm measures whether
+  the diagnostics matter at all on this problem.
+- **A program-search loop with a scored archive finds things a single call does
+  not.** FunSearch (Nature, 2024) and AlphaEvolve are the existence proofs; both
+  pair an LLM proposer with an evaluator and an island-structured population.
+  LLaMEA is the same idea stated as an evolutionary-algorithm framework.
+
+### The controls, which are the point
+
+A loop that beats one-shot mining proves that iteration helps. It does not prove
+that the model helps, because the loop also adds gates, an archive, niches and a
+fitness function that a one-shot run never had. So four arms run through
+identical gates, identical fitness, identical archive rules and identical
+windows, differing only in who proposes:
+
+| arm | proposer | iteration | feedback |
+|---|---|---|---|
+| GP loop | random draws from the grammar | yes | none |
+| one-shot | the model, one call per island | no | none |
+| loop | the model | yes | full diagnostics |
+| feedback ablation | the model | yes | fitness scalar only |
+
+The GP arm uses the same typed tree operators as the mock backend
+(`quantaalpha_us/evo/gp.py`): a random single-node edit for MUTATE, a random
+subtree swap for CROSSOVER, a random prune for SIMPLIFY. It is held to the same
+structural requirements the model is, including the crossover fusion check,
+because a control allowed to submit non-crossovers while the model is not would
+be measuring the gate rather than the proposer.
+
+### Reproducibility
+
+Every raw response is written to
+`runs/<arm>/<round>/<island>/<operator>.jsonl` **before** it is parsed, so a
+parse error cannot destroy a paid call. `--resume` restarts from the last
+completed round after discarding any partial one. `--replay` re-derives the
+whole run from saved responses with zero model calls, and a test asserts the
+replayed archive matches byte for byte. `--dry-run` prints the exact command
+lines and the token estimate before anything is spent. With the mock backend and
+a fixed seed, two runs produce identical archives.
+
 ## Universe
 
 Scoring is restricted to **point-in-time S&P 500 membership**, joined on
