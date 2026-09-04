@@ -476,3 +476,26 @@ def test_a_half_life_beyond_the_grid_is_stated_not_faked():
     )
     block = candidate_feedback(metrics, StructuralContext(), EvoConfig())
     assert "does not halve" in block
+
+
+def test_the_pruned_nearest_alpha_search_returns_the_exact_minimum(gates):
+    """The size prune is only sound because unit-cost tree edit distance is at
+    least the difference in node counts. If that ever stopped holding, the
+    feedback block would quietly cite the wrong published alpha."""
+    exhaustive_gates = GateRunner(EvoConfig(), [a.expression for a in alpha101.load()])
+    for expression in (*PARENTS,
+                       "CS_RANK(TS_CORR(RANK($close), RANK($volume), 5))",
+                       "$close",
+                       "IF_ELSE($close > $open, TS_MEAN($volume, 5), -TS_STD($return, 10))"):
+        tree = at.parse(expression)
+        brute = min(at.tree_edit_distance(tree, other)
+                    for _, other in exhaustive_gates.alpha101)
+        distance, name = gates.nearest_alpha101_edit(expression)
+        assert distance == brute, (expression, distance, brute)
+        assert name
+
+
+def test_the_nearest_alpha_lookup_is_memoised(gates):
+    first = gates.nearest_alpha101_edit(PARENTS[0])
+    assert PARENTS[0] in gates._nearest_edit_cache
+    assert gates.nearest_alpha101_edit(PARENTS[0]) == first

@@ -64,6 +64,11 @@ class GateRunner:
         self.sanitizer = sanitizer or ExpressionSanitizer()
         self.alpha101: list[tuple[str, at.Node]] = []
         self._alpha_subtrees: list[tuple[str, dict[str, int]]] = []
+        self._alpha_sizes: list[tuple[str, at.Node, int]] = []
+        # memo for the edit-distance lookup, which is the single most expensive
+        # thing the feedback block asks for and is asked for the same parents
+        # round after round (elites survive)
+        self._nearest_edit_cache: dict[str, tuple[int, str]] = {}
         for expr in alpha101:
             try:
                 tree = at.parse(expr)
@@ -71,6 +76,7 @@ class GateRunner:
                 continue
             self.alpha101.append((expr, tree))
             self._alpha_subtrees.append((expr, at.subtree_sizes(tree)))
+            self._alpha_sizes.append((expr, tree, at.size(tree)))
 
     # ---- text-only -------------------------------------------------------
 
@@ -117,17 +123,44 @@ class GateRunner:
         return best, who
 
     def nearest_alpha101_edit(self, expression: str) -> tuple[int, str]:
-        """Edit distance to the closest published alpha, for the feedback block."""
+        """Edit distance to the closest published alpha, for the feedback block.
+
+        Exact, but it does not compute all 50 distances. Two things make that
+        affordable, and neither changes the answer:
+
+        - a memo, because the feedback block is built for the same elite parents
+          round after round;
+        - a size prune. Zhang-Shasha with unit costs cannot return less than the
+          difference in node counts, so once a distance of d has been found,
+          every formula whose size differs by d or more can be skipped. Visiting
+          the alphas in order of size difference makes that prune bite
+          immediately: on this Alpha101 set it removes about four in five of the
+          comparisons.
+
+        Without it a single feedback block cost 50 full tree-edit computations
+        against formulas of up to 51 nodes, which was most of a round's wall
+        clock once the islands had real populations.
+        """
+        cached = self._nearest_edit_cache.get(expression)
+        if cached is not None:
+            return cached
         try:
             tree = at.parse(expression)
         except at.ParseError:
             return -1, ""
+        own = at.size(tree)
+        candidates = sorted(self._alpha_sizes, key=lambda row: abs(row[2] - own))
         best, who = None, ""
-        for expr, other in self.alpha101:
-            d = at.tree_edit_distance(tree, other)
-            if best is None or d < best:
-                best, who = d, expr
-        return (best if best is not None else -1), who
+        for expr, other, size in candidates:
+            lower_bound = abs(size - own)
+            if best is not None and lower_bound >= best:
+                break  # sorted by the bound, so nothing later can beat `best`
+            distance = at.tree_edit_distance(tree, other)
+            if best is None or distance < best:
+                best, who = distance, expr
+        result = ((best if best is not None else -1), who)
+        self._nearest_edit_cache[expression] = result
+        return result
 
     # ---- panel-backed ----------------------------------------------------
 

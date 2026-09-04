@@ -35,7 +35,6 @@ from quantaalpha_us.evo.fitness import GateRunner  # noqa: E402
 from quantaalpha_us.evo.persistence import RunStore, token_totals  # noqa: E402
 from quantaalpha_us.evo.scoring import PanelScorer, candidate_id  # noqa: E402
 from quantaalpha_us.factors import alpha101  # noqa: E402
-from quantaalpha_us.factors import ast_tools as at  # noqa: E402
 from quantaalpha_us.factors.factor_research import _daily_spearman_ic  # noqa: E402
 from quantaalpha_us.factors.ic_panel import LAGGED, apply_membership_filter, load_ic_table  # noqa: E402
 from quantaalpha_us.factors.multiple_testing import (  # noqa: E402
@@ -121,7 +120,7 @@ def combined_holdout_ic(scorer: PanelScorer, expressions, signs,
 
 
 def summarise_arm(name: str, entries, scorer: PanelScorer, gates: GateRunner,
-                  alpha_trees, store: RunStore | None, random_crit: float) -> dict:
+                  store: RunStore | None, random_crit: float) -> dict:
     top = sorted(entries, key=lambda e: (-e.fitness, e.admitted_at))[:TOP_N]
     expressions = [e.expression for e in top]
     signs = [int((e.metrics or {}).get("sign", 1)) for e in top]
@@ -236,7 +235,6 @@ def main() -> int:
     scorer = PanelScorer(bars, config, memoize=True)
     alphas = alpha101.load()
     gates = GateRunner(config, [a.expression for a in alphas])
-    alpha_trees = [at.parse(a.expression) for a in alphas]
     print(f"holdout {scorer._holdout_dates.min().date()} -> "
           f"{scorer._holdout_dates.max().date()} ({len(scorer._holdout_dates):,} days). "
           "This is the only script that reads it.", flush=True)
@@ -248,8 +246,17 @@ def main() -> int:
     pool = pd.read_csv(Path(args.zoo_dir) / "pool.csv")
     random_exprs = pool.loc[(pool["group"] == "random") & pool["error"].isna(),
                             "expression"].tolist()
-    fit_ic = table.window(config.windows.fit_start, config.windows.fit_end,
-                          horizon=1, kind=LAGGED)[random_exprs].dropna(axis=0, how="any")
+    fit_window = table.window(config.windows.fit_start, config.windows.fit_end,
+                              horizon=1, kind=LAGGED)[random_exprs]
+    # Same guard the zoo hurdle uses: a handful of degenerate random draws have
+    # a far shorter sample than the rest, and a complete-case intersection over
+    # all of them would collapse the null to a few hundred days.
+    days = fit_window.notna().sum()
+    usable = [c for c in fit_window.columns if days[c] >= 0.9 * days.max()]
+    if len(usable) < len(fit_window.columns):
+        print(f"  held {len(fit_window.columns) - len(usable)} short-sample random "
+              f"factors out of the null")
+    fit_ic = fit_window[usable].dropna(axis=0, how="any")
     boot = bootstrap_null_tstats(fit_ic.to_numpy(), draws=args.draws, seed=1)
     random_crit = float(np.quantile(boot.max_abs_t(), 0.95))
     print(f"A1 hurdle on the fit window: |t| > {random_crit:.2f} "
@@ -273,7 +280,7 @@ def main() -> int:
         # three hand-written expressions, so counting them would flatter all
         # arms equally and blur exactly the comparison this table is for
         summaries[path.name] = summarise_arm(path.name, archive.discovered(), scorer,
-                                             gates, alpha_trees, store, random_crit)
+                                             gates, store, random_crit)
 
     # Alpha101 through the same archive rules, minus the paraphrase gate, which
     # would reject every published alpha for being itself.
@@ -300,7 +307,7 @@ def main() -> int:
             metrics=metrics.to_dict(),
         ), ranked)
     summaries["alpha101"] = summarise_arm("alpha101", baseline_archive.members(), scorer,
-                                          gates, alpha_trees, None, random_crit)
+                                          gates, None, random_crit)
 
     # ---- the combinations ------------------------------------------------
     combos = []
