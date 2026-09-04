@@ -280,6 +280,17 @@ class EvoConfig:
     correlation_date_stride: int = 10
     bootstrap_draws: int = 200
     bootstrap_block: int = 21
+    # The IC half-life exists to sort a factor into one of three horizon
+    # buckets, and it is a ratio of mean ICs, so it does not need every date.
+    # The four extra horizon ICs were otherwise the single most expensive thing
+    # in scoring a candidate. Rather than a fixed stride, the curve keeps at
+    # least this many dates: on the production fit window (3,521 days) that is a
+    # stride of 5, and on a short window it is no stride at all. A fixed stride
+    # was tried first and put a factor two buckets away from its
+    # full-resolution answer on a 315-day window, because 63 observations of a
+    # mean IC is noise. The one-day IC that drives fitness is always measured on
+    # the full window.
+    half_life_min_dates: int = 700
 
     @property
     def one_shot_candidates(self) -> int:

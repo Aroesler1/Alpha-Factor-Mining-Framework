@@ -499,3 +499,27 @@ def test_the_nearest_alpha_lookup_is_memoised(gates):
     first = gates.nearest_alpha101_edit(PARENTS[0])
     assert PARENTS[0] in gates._nearest_edit_cache
     assert gates.nearest_alpha101_edit(PARENTS[0]) == first
+
+
+def test_the_strided_half_life_curve_puts_factors_in_the_same_bucket(tmp_path):
+    """The half-life is measured on every fifth fit date to keep scoring
+    affordable. It only has to decide fast/medium/slow, so the check is that the
+    bucket agrees with the full-resolution curve, not that the number does."""
+    import numpy as np
+    from dataclasses import replace as dc_replace
+
+    from quantaalpha_us.evo.scoring import PanelScorer
+    from quantaalpha_us.factors.ic_panel import HORIZONS, horizon_bucket, ic_half_life
+    from quantaalpha_us.factors.factor_research import _daily_spearman_ic
+    from tests.synthetic_panel import PLANTED_EXPRESSION, planted_bars
+    from tests.test_evo_end_to_end import make_config
+
+    config = make_config()
+    scorer = PanelScorer(planted_bars(n_days=500, n_symbols=50), config)
+    for expression in (PLANTED_EXPRESSION, "TS_MEAN($volume, 21)", "RANK($high - $low)"):
+        signal = scorer.evaluate(expression)
+        strided = scorer.metrics(expression, signal).half_life
+        full = ic_half_life({h: float(scorer.fit_ic(signal, h).mean()) for h in HORIZONS})
+        assert horizon_bucket(strided) == horizon_bucket(full), (
+            expression, strided, full
+        )

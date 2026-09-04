@@ -177,6 +177,17 @@ class PanelScorer:
             h: forward_returns_at(self.panels, h, LAGGED).loc[self.fit_dates]
             for h in HORIZONS
         }
+        # The horizon grid used only for the half-life, on a strided sample.
+        # Self-consistent: every horizon on the curve, h = 1 included, is
+        # measured on the SAME dates, so the ratio the half-life reads is not
+        # comparing two different samples.
+        stride = max(1, len(self.fit_dates) // max(config.half_life_min_dates, 1))
+        self.half_life_stride = stride
+        self._half_life_dates = self.fit_dates[::stride]
+        self._fwd_half_life = {
+            h: panel.loc[panel.index.isin(self._half_life_dates)]
+            for h, panel in self._fwd_fit.items()
+        }
         self._fwd_cheap = self._fwd_fit[1].loc[self.cheap_dates]
         self._fwd_validation = forward_returns_at(self.panels, 1, LAGGED).loc[
             self._validation_dates
@@ -271,7 +282,11 @@ class PanelScorer:
         stability = max(cfg.fitness.stability_floor, positive / max(len(list(years)), 1))
 
         turnover = daily_turnover(signal.loc[signal.index.isin(self.fit_dates)])
-        curve = {h: float(self.fit_ic(signal, h).mean()) for h in HORIZONS}
+        curve = {
+            h: float(_daily_spearman_ic(signal, self._fwd_half_life[h],
+                                        self.min_cross_section).mean())
+            for h in HORIZONS
+        }
         half_life = ic_half_life(curve)
 
         comp = at.complexity(expression).to_dict()
