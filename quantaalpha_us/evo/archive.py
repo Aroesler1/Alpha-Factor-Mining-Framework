@@ -84,6 +84,11 @@ class Archive:
         self.path = Path(path) if path is not None else None
         self.entries: dict[str, ArchiveEntry] = {}
         self.ranks: dict[str, np.ndarray] = {}
+        # subtree hash -> node count, per member, computed once at admission.
+        # Without it the paraphrase gate re-enumerates every archive member's
+        # tree for every candidate, which is the dominant cost of the cheap
+        # half of the gate stack once the archive is full.
+        self._subtrees: dict[str, dict[str, int]] = {}
         self._sequence = 0
         if self.path is not None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,18 +157,25 @@ class Archive:
 
     # ---- gate helpers ----------------------------------------------------
 
+    def _subtree_map(self, entry: ArchiveEntry) -> dict[str, int]:
+        cached = self._subtrees.get(entry.id)
+        if cached is None:
+            try:
+                cached = at.subtree_sizes(at.parse(entry.expression))
+            except at.ParseError:
+                cached = {}
+            self._subtrees[entry.id] = cached
+        return cached
+
     def max_shared_subtree(self, expression: str) -> tuple[int, str]:
         """Largest complete subtree shared with any member, and which member."""
         try:
-            tree = at.parse(expression)
+            candidate = at.subtree_sizes(at.parse(expression))
         except at.ParseError:
             return 0, ""
         best, who = 0, ""
         for entry in self.members():
-            try:
-                shared = at.largest_shared_subtree(tree, at.parse(entry.expression))
-            except at.ParseError:
-                continue
+            shared = at.largest_shared_from_maps(candidate, self._subtree_map(entry))
             if shared > best:
                 best, who = shared, entry.expression
         return best, who
@@ -208,6 +220,7 @@ class Archive:
             evicted = weakest.id
             self.entries.pop(weakest.id, None)
             self.ranks.pop(weakest.id, None)
+            self._subtrees.pop(weakest.id, None)
 
         self._sequence += 1
         entry.admitted_at = self._sequence
@@ -244,6 +257,7 @@ class Archive:
             if evicted:
                 archive.entries.pop(evicted, None)
                 archive.ranks.pop(evicted, None)
+                archive._subtrees.pop(evicted, None)
             entry = ArchiveEntry(
                 id=record["id"], expression=record["expression"],
                 fitness=float(record["fitness"]), niche=tuple(record["niche"]),

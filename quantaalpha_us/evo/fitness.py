@@ -63,11 +63,14 @@ class GateRunner:
         self.config = config
         self.sanitizer = sanitizer or ExpressionSanitizer()
         self.alpha101: list[tuple[str, at.Node]] = []
+        self._alpha_subtrees: list[tuple[str, dict[str, int]]] = []
         for expr in alpha101:
             try:
-                self.alpha101.append((expr, at.parse(expr)))
+                tree = at.parse(expr)
             except at.ParseError:
                 continue
+            self.alpha101.append((expr, tree))
+            self._alpha_subtrees.append((expr, at.subtree_sizes(tree)))
 
     # ---- text-only -------------------------------------------------------
 
@@ -103,12 +106,12 @@ class GateRunner:
 
     def max_shared_alpha101(self, expression: str) -> tuple[int, str]:
         try:
-            tree = at.parse(expression)
+            candidate = at.subtree_sizes(at.parse(expression))
         except at.ParseError:
             return 0, ""
         best, who = 0, ""
-        for expr, other in self.alpha101:
-            shared = at.largest_shared_subtree(tree, other)
+        for expr, other in self._alpha_subtrees:
+            shared = at.largest_shared_from_maps(candidate, other)
             if shared > best:
                 best, who = shared, expr
         return best, who

@@ -249,6 +249,24 @@ def largest_shared_subtree_expr(a: str, b: str) -> int:
     return largest_shared_subtree(parse(a), parse(b))
 
 
+def largest_shared_from_maps(left: dict[str, int], right: dict[str, int]) -> int:
+    """`largest_shared_subtree` when both subtree maps are already computed.
+
+    The gates compare each candidate against 50 published formulas and up to 144
+    archive members, so enumerating and hashing the same reference trees on
+    every comparison is the dominant cost of the cheap half of the gate stack.
+    Callers cache the reference maps once and pass them here; a test asserts
+    this returns exactly what the two-tree version does.
+    """
+    if len(left) > len(right):
+        left, right = right, left
+    best = 0
+    for key, size in left.items():
+        if size > best and key in right:
+            best = size
+    return best
+
+
 # --------------------------------------------------------------------------
 # Zhang-Shasha tree edit distance
 # --------------------------------------------------------------------------

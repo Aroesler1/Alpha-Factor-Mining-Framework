@@ -107,6 +107,16 @@ def main() -> int:
               f"{config.one_shot_candidates * len(config.islands)} a full loop generates")
 
     store = RunStore(Path(args.runs_dir) / args.arm)
+    if not args.resume and store.archive_path.exists():
+        # Starting fresh on top of an existing run appends to its archive and
+        # leaves two response records under one (round, island, operator) key,
+        # which corrupts replay silently and much later.
+        raise SystemExit(
+            f"{store.root} already holds a run ({len(store.archive_records())} archive "
+            f"records, {store.last_completed_round()} completed rounds).\n"
+            "Pass --resume to continue it, use a different --arm, or delete the "
+            "directory to start over."
+        )
     backend = build_backend(args, config, store)
 
     started = time.time()

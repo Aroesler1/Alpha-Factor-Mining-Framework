@@ -599,12 +599,18 @@ class EvolutionRunner:
     # ---- the curve and the stop -----------------------------------------
 
     def _validation_top20(self, n: int = 20) -> float:
-        """Equal-weighted mean of the top-20 archive members' validation ICs.
+        """Equal-weighted mean of the top-n archive members' validation ICs.
 
         Equal-weighted mean of the individual ICs, not the IC of a combined
         portfolio: the combined version is what the final holdout table reports,
         and computing it every round would mean re-evaluating twenty panels per
         round for a number that only has to be monotone-ish.
+
+        Note the number is only comparable across rounds once the archive holds
+        at least `n` members. Below that the mean is taken over fewer, stronger
+        factors, so it FALLS as the archive fills even when the search is going
+        well; `run` therefore does not count a stall until the archive is full
+        enough for the comparison to mean something.
         """
         top = self.archive.top(n, exclude_seeds=True)
         values = [self._validation_ic.get(e.id) for e in top]
@@ -677,11 +683,17 @@ class EvolutionRunner:
                       f"validation top-20 IC {curve:.5f}, "
                       f"{summary.calls} calls, {summary.seconds:.0f}s", flush=True)
 
+            # The curve is a mean over min(20, archive size) members, so while
+            # the archive is still filling it drops for a reason that has
+            # nothing to do with the search stalling: each new admission is
+            # weaker than the ones already there. Only start counting stalls
+            # once there are twenty to average.
+            archive_full_enough = len(self.archive.top(20, exclude_seeds=True)) >= 20
             if np.isfinite(curve) and curve > best_curve + 1e-12:
                 best_curve, stalled = curve, 0
-            else:
+            elif archive_full_enough:
                 stalled += 1
-            if stalled >= self.config.schedule.early_stop_patience:
+            if archive_full_enough and stalled >= self.config.schedule.early_stop_patience:
                 stopped_early = True
                 stop_reason = (
                     f"validation top-20 IC did not improve for "

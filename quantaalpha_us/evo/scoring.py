@@ -39,7 +39,7 @@ from quantaalpha_us.factors.ic_panel import (
     ic_half_life,
     universe_coverage,
 )
-from quantaalpha_us.factors.multiple_testing import block_bootstrap_se
+from quantaalpha_us.factors.multiple_testing import block_bootstrap_se, newey_west_tstats
 
 
 def candidate_id(expression: str) -> str:
@@ -217,19 +217,27 @@ class PanelScorer:
     # ---- scoring ---------------------------------------------------------
 
     def cheap_tstat(self, signal: pd.DataFrame) -> float:
-        """|t| on the last three fit years only, used to kill hopeless candidates.
+        """Newey-West |t| on the last three fit years only, as the first screen.
 
-        A cheap screen has to be cheap AND has to not discard good factors. Three
-        years of daily ICs is ~750 observations, so a factor with any real edge
-        clears |t| = 1 there comfortably; the screen is set to remove the
-        expressions with no cross-sectional information at all, which is most of
-        what a random proposer produces.
+        The screen exists to avoid paying for the full fit window and the
+        horizon grid on expressions with no cross-sectional information at all,
+        which is most of what a random proposer produces.
+
+        It is not free, and the cost is worth stating: on this panel it rejects
+        7 of the 9 hand-written island seeds, including 21-day momentum
+        normalised by volatility (|t| = 0.36) and average dollar volume
+        (|t| = 0.86). Those are not bad factors; 2011-2013 is simply a window
+        in which they did nothing. So the screen does not only save time, it
+        tilts the search toward what worked in its own three years. The
+        alternative -- scoring every candidate on the full fit window -- costs
+        roughly five times as much per candidate, and the tilt is documented
+        rather than removed.
         """
         ic = _daily_spearman_ic(signal, self._fwd_cheap, self.min_cross_section)
         if len(ic) < 60:
             return 0.0
-        se = ic.std(ddof=1) / np.sqrt(len(ic))
-        return float(abs(ic.mean() / se)) if se > 0 else 0.0
+        t = newey_west_tstats(ic.to_numpy()[:, None], lag=self.config.bootstrap_block)[0]
+        return float(abs(t)) if np.isfinite(t) else 0.0
 
     def fit_ic(self, signal: pd.DataFrame, horizon: int = 1) -> pd.Series:
         return _daily_spearman_ic(signal, self._fwd_fit[horizon], self.min_cross_section)

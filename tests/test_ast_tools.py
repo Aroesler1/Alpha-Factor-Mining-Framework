@@ -405,3 +405,18 @@ def test_written_order_parse_keeps_operand_order_but_still_collapses_aliases():
 
 def test_panel_paths_includes_the_root():
     assert () in at.panel_paths(at.parse("TS_MEAN($close, 21)"))
+
+
+def test_the_cached_map_form_of_shared_subtree_agrees_with_the_direct_one():
+    """The gates use the map form for speed; if the two ever disagreed, every
+    paraphrase rejection would be measured differently from every report."""
+    exprs = ["$close", "RANK($close)", "TS_MEAN($close, 21)",
+             "RANK(TS_DELTA($close, 21)) * 2", "CS_RANK(TS_DELTA($close, 21)) - $volume",
+             "TS_CORR(RANK($close), RANK($volume), 5)",
+             "IF_ELSE($close > $open, TS_MEAN($volume, 5), -TS_STD($return, 10))"]
+    maps = {e: at.subtree_sizes(at.parse(e)) for e in exprs}
+    for a in exprs:
+        for b in exprs:
+            assert at.largest_shared_from_maps(maps[a], maps[b]) == (
+                at.largest_shared_subtree_expr(a, b)
+            ), (a, b)
