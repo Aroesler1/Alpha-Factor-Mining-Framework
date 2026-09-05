@@ -293,6 +293,20 @@ class EvoConfig:
     half_life_min_dates: int = 700
 
     @property
+    def effective_rounds(self) -> int:
+        """Rounds the runner actually iterates.
+
+        One-shot is one round by definition: a single EXPLORE-style call per
+        island, no iteration. `schedule.rounds` still holds 8 because
+        `one_shot_candidates` reads it to size the batch, so the runner must ask
+        HERE rather than reading the schedule. Getting this wrong is not a
+        cosmetic bug: the first one-shot run made 3 calls per round for 4 rounds
+        before the budget stopped it, at roughly 20 minutes and several dollars
+        a call.
+        """
+        return 1 if self.mode == "one_shot" else self.schedule.rounds
+
+    @property
     def one_shot_candidates(self) -> int:
         """How many a one-shot island must ask for to match a loop island's total."""
         schedule = self.schedule

@@ -221,3 +221,24 @@ def test_the_stop_message_names_the_limit_that_was_hit(tmp_path, bars, alphas):
     runner.budget.max_requests = 3
     with pytest.raises(RuntimeError, match="request cap reached"):
         runner.run()
+
+
+def test_one_shot_runs_exactly_one_round(tmp_path, bars, alphas):
+    """Regression, and an expensive one. One-shot skipped the reflection call
+    but still iterated all 8 rounds, so it made 3 calls a round until the budget
+    stopped it -- at roughly 20 minutes and several dollars a call."""
+    config = make_config(mode="one_shot")
+    assert config.effective_rounds == 1
+    assert config.schedule.rounds > 1, "the schedule still sizes the one-shot batch"
+
+    backend = MockBackend(seed=3)
+    runner, store = _runner(tmp_path, bars, alphas, config, backend, name="oneshot")
+    result = runner.run()
+    assert len(result.rounds) == 1
+    assert backend.calls == len(config.islands)
+    assert {key[0] for key in store.all_responses()} == {1}
+
+
+def test_the_loop_mode_still_iterates_its_full_schedule(tmp_path, bars, alphas):
+    config = make_config()
+    assert config.effective_rounds == config.schedule.rounds == 2

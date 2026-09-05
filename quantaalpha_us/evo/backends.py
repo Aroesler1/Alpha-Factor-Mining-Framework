@@ -99,7 +99,12 @@ class ClaudeCodeEvoBackend:
     model: str = "claude-sonnet-5"
     effort: str = "max"
     binary: str = "claude"
-    timeout_seconds: int = 1800
+    # Measured, not guessed: a loop call at max effort runs a few minutes, but a
+    # one-shot call asking for 240 expressions ran 18 to 30 minutes and produced
+    # 100k to 190k output tokens. At 1800 s one of those was killed by the
+    # timeout AFTER the model had done the work and been billed for it, which is
+    # the worst possible way to lose a call.
+    timeout_seconds: int = 5400
     name: str = "claude-code"
 
     def __post_init__(self) -> None:

@@ -171,6 +171,8 @@ class EvolutionRunner:
         self._metrics: dict[str, CandidateMetrics] = {}
         self._validation_ic: dict[str, float] = {}
         self._seen: set[str] = set()
+        self._salvaged: dict[str, dict] = {}
+        self.reused_calls = 0
         self._admissions = 0
         self.calls = 0
         self.total_tokens = 0
@@ -198,6 +200,10 @@ class EvolutionRunner:
     def _resume(self) -> int:
         last = self.store.last_completed_round()
         self.store.reset_to_round(last)
+        self._salvaged = self.store.salvaged_responses()
+        if self._salvaged and self.verbose:
+            print(f"{len(self._salvaged)} reply/replies salvaged from the interrupted "
+                  "round; they will be reused where the prompt is identical", flush=True)
         if last <= 0:
             if self.verbose:
                 print("nothing complete to resume from; starting the run over", flush=True)
@@ -483,6 +489,26 @@ class EvolutionRunner:
     # ---- the round -------------------------------------------------------
 
     def _call(self, request: ops.OperatorRequest) -> BackendReply:
+        salvaged = self._salvaged.pop(request.prompt_hash, None)
+        if salvaged is not None:
+            # Same prompt, already paid for. Recorded again into the live
+            # response file so replay still sees one record per call, in order.
+            reply = BackendReply(
+                payload=salvaged.get("payload") or {},
+                raw_text=salvaged.get("raw_text", ""),
+                model=salvaged.get("model", ""), effort=salvaged.get("effort", ""),
+                input_tokens=int(salvaged.get("input_tokens", 0) or 0),
+                output_tokens=int(salvaged.get("output_tokens", 0) or 0),
+                total_tokens=int(salvaged.get("total_tokens", 0) or 0),
+                cost_usd=salvaged.get("cost_usd"),
+                duration_ms=int(salvaged.get("duration_ms", 0) or 0),
+            )
+            self.store.record_response(request, reply)
+            self.reused_calls += 1
+            if self.verbose:
+                print(f"  reused a salvaged {request.operator}/{request.island} reply",
+                      flush=True)
+            return reply
         if not self.budget.can_request():
             # Say WHICH limit stopped the run. "Budget exhausted" was reported
             # for a run that had used 107 of a million allowed requests: the
@@ -660,7 +686,7 @@ class EvolutionRunner:
         stalled = 0
         stopped_early, stop_reason = False, "reached the round limit"
 
-        for round_index in range(completed + 1, self.config.schedule.rounds + 1):
+        for round_index in range(completed + 1, self.config.effective_rounds + 1):
             round_started = time.time()
             counter: dict[str, int] = {}
             calls_before, tokens_before = self.calls, self.total_tokens
@@ -714,7 +740,8 @@ class EvolutionRunner:
                 best_curve, stalled = curve, 0
             elif archive_full_enough:
                 stalled += 1
-            if archive_full_enough and stalled >= self.config.schedule.early_stop_patience:
+            if (self.config.mode != "one_shot" and archive_full_enough
+                    and stalled >= self.config.schedule.early_stop_patience):
                 stopped_early = True
                 stop_reason = (
                     f"validation top-20 IC did not improve for "

@@ -131,6 +131,12 @@ class RunStore:
         for path in sorted(self.root.rglob("*.jsonl")):
             if path.parent == self.root:
                 continue  # archive/rounds/rejections live at the top level
+            if self.salvage_root in path.parents:
+                # salvaged replies are a holding area for a resumed run, not part
+                # of the run's response record. Counting them here made a
+                # resumed round look like it had answered every call twice,
+                # which is exactly the corruption salvage exists to avoid.
+                continue
             try:
                 round_index = int(path.parent.parent.name)
             except ValueError:
@@ -172,15 +178,7 @@ class RunStore:
         every start, so keeping its records would make the re-scored seeds look
         like duplicates and leave every island empty.
         """
-        for path in sorted(self.root.iterdir()) if self.root.exists() else []:
-            if not path.is_dir():
-                continue
-            try:
-                index = int(path.name)
-            except ValueError:
-                continue
-            if index > round_index:
-                self._remove_round_dir(path)
+        self.salvage_partial_rounds(round_index)
         for path in (self.archive_path, self.candidates_path,
                      self.rejections_path, self.rounds_path):
             if round_index <= 0:
@@ -188,6 +186,62 @@ class RunStore:
                     path.unlink()
             else:
                 self._filter_by_round(path, round_index)
+
+    @property
+    def salvage_root(self) -> Path:
+        return self.root / "_salvage"
+
+    def salvage_partial_rounds(self, through_round: int) -> int:
+        """Move responses from rounds after `through_round` into a salvage area.
+
+        A round that died half way through has already paid for the calls that
+        succeeded. At 20 to 30 minutes and several dollars a call that is not an
+        acceptable thing to throw away, and the previous behaviour -- delete the
+        partial round and start it again -- threw away all of them.
+
+        The files are MOVED rather than left in place so the live response
+        directory keeps exactly one record per call in call order, which is what
+        replay depends on. `EvolutionRunner` looks each one up by prompt hash
+        before calling the model, so a salvaged reply is only reused when the
+        resumed run asks the identical question.
+        """
+        moved = 0
+        if not self.root.exists():
+            return 0
+        for path in sorted(self.root.iterdir()):
+            if not path.is_dir():
+                continue
+            try:
+                index = int(path.name)
+            except ValueError:
+                continue
+            if index <= through_round:
+                continue
+            for source in sorted(path.rglob("*.jsonl")):
+                target = self.salvage_root / str(index) / source.parent.name / source.name
+                target.parent.mkdir(parents=True, exist_ok=True)
+                existing = _read_jsonl(target)
+                records = existing + _read_jsonl(source)
+                with target.open("w", encoding="utf-8") as fh:
+                    for record in records:
+                        fh.write(json.dumps(record, sort_keys=True,
+                                            separators=(",", ":"), default=str) + "\n")
+                moved += len(records) - len(existing)
+                source.unlink()
+            self._remove_round_dir(path)
+        return moved
+
+    def salvaged_responses(self) -> dict[str, dict]:
+        """Salvaged replies keyed by prompt hash, so a reuse is provably the same call."""
+        out: dict[str, dict] = {}
+        if not self.salvage_root.exists():
+            return out
+        for path in sorted(self.salvage_root.rglob("*.jsonl")):
+            for record in _read_jsonl(path):
+                digest = record.get("prompt_hash")
+                if digest and not record.get("error") and digest not in out:
+                    out[digest] = record
+        return out
 
     def known_candidate_ids(self) -> set[str]:
         """Ids already proposed, so a resumed run does not re-propose them."""

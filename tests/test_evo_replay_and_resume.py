@@ -10,6 +10,8 @@ corrupted one.
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from quantaalpha_us.evo.backends import MockBackend, ReplayBackend
@@ -164,3 +166,63 @@ def test_resume_restores_the_correlation_gate(tmp_path, bars, alphas):
     assert resumed.archive.ranks, "no rank matrices were rebuilt on resume"
     assert set(resumed.archive.ranks) >= {e.id for e in first.archive.members()
                                           if e.id in resumed.archive.entries}
+
+
+def test_a_partly_finished_round_reuses_the_calls_it_already_paid_for(tmp_path, bars, alphas):
+    """The expensive case. A round that dies half way through has already paid
+    for the calls that succeeded; deleting them and asking again is the most
+    costly possible response at 20 to 30 minutes and several dollars a call."""
+    config = make_config()
+    scorer = PanelScorer(bars, config)
+    store = RunStore(tmp_path / "salvage")
+    killer = ExplodingBackend(seed=3, seed_expressions=(PLANTED_EXPRESSION,))
+    killer.fail_after = 4
+    runner = EvolutionRunner(config, scorer, killer, store, alpha101=alphas, verbose=False)
+    with pytest.raises(KeyboardInterrupt):
+        runner.run()
+    paid_for = sum(len(v) for v in store.all_responses().values())
+    assert paid_for >= 3, "the interrupted run saved too little to test salvage"
+
+    resumed = EvolutionRunner(config, PanelScorer(bars, config),
+                              MockBackend(seed=3, seed_expressions=(PLANTED_EXPRESSION,)),
+                              store, alpha101=alphas, verbose=False)
+    result = resumed.run(resume=True)
+    assert resumed.reused_calls > 0, "no salvaged reply was reused"
+    assert len(result.rounds) == config.schedule.rounds
+    # replay integrity survives: still exactly one record per call
+    for records in store.all_responses().values():
+        assert len(records) == 1
+
+
+def test_a_salvaged_reply_is_only_reused_for_an_identical_prompt(tmp_path, bars, alphas):
+    """Reuse is keyed on the prompt hash, so a resumed run that asks a different
+    question gets a real answer rather than a stale one."""
+    config = make_config()
+    store = RunStore(tmp_path / "hash")
+    killer = ExplodingBackend(seed=3)
+    killer.fail_after = 4
+    runner = EvolutionRunner(config, PanelScorer(bars, config), killer, store,
+                             alpha101=alphas, verbose=False)
+    with pytest.raises(KeyboardInterrupt):
+        runner.run()
+
+    store.salvage_partial_rounds(store.last_completed_round())
+    salvaged = store.salvaged_responses()
+    assert salvaged, "nothing was salvaged"
+    assert all(len(digest) == 16 for digest in salvaged), "salvage is keyed by prompt hash"
+
+    # Rewrite every salvaged reply under a hash that answers no question the
+    # resumed run will ask. Reuse must then be zero, and the run must complete
+    # by calling the model instead of silently pairing a stale answer with a
+    # prompt it never saw.
+    for path in sorted(store.salvage_root.rglob("*.jsonl")):
+        records = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        for record in records:
+            record["prompt_hash"] = "deadbeefdeadbeef"
+        path.write_text("".join(json.dumps(r, sort_keys=True) + "\n" for r in records))
+
+    resumed = EvolutionRunner(config, PanelScorer(bars, config), MockBackend(seed=3),
+                              store, alpha101=alphas, verbose=False)
+    result = resumed.run(resume=True)
+    assert resumed.reused_calls == 0, "a reply was reused for a prompt it did not answer"
+    assert len(result.rounds) == config.schedule.rounds

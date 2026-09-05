@@ -59,7 +59,8 @@ def build_backend(args, config: EvoConfig, store: RunStore):
         return GPBackend(seed=config.seed)
     if args.backend == "mock":
         return MockBackend(seed=config.seed)
-    return ClaudeCodeEvoBackend(model=args.model, effort=args.effort)
+    return ClaudeCodeEvoBackend(model=args.model, effort=args.effort,
+                                timeout_seconds=args.timeout)
 
 
 def main() -> int:
@@ -79,6 +80,10 @@ def main() -> int:
     parser.add_argument("--budget", type=int, default=0,
                         help="hard cap on model requests for this arm; 0 means "
                              "exactly the planned count plus a small margin")
+    parser.add_argument("--timeout", type=int, default=5400,
+                        help="per-call timeout in seconds. A one-shot call asking for "
+                             "240 expressions at max effort has been measured at 18-30 "
+                             "minutes; a killed call is still a billed call.")
     parser.add_argument("--token-estimate", type=int, default=30000,
                         help="tokens assumed per call by --dry-run. At max effort a "
                              "call on these prompts runs 20k-40k including thinking.")
@@ -137,6 +142,7 @@ def main() -> int:
 
     planned = (len(config.islands) if config.mode == "one_shot"
                else schedule.planned_calls(len(config.islands)))
+    print(f"mode {config.mode}: {config.effective_rounds} round(s), {planned} planned calls")
     budget = RunBudget(max_requests=args.budget or planned + 10, max_total_tokens=10**9)
     runner = EvolutionRunner(config, scorer, backend, store,
                              alpha101=[a.expression for a in alpha101.load()],
@@ -178,7 +184,7 @@ def main() -> int:
     print(f"ARM {args.arm}  ({config.model}, effort {config.effort}, mode {config.mode}, "
           f"feedback {config.feedback_mode})".center(96))
     print("=" * 96)
-    print(f"\nrounds run          {len(result.rounds)}/{schedule.rounds}"
+    print(f"\nrounds run          {len(result.rounds)}/{config.effective_rounds}"
           f"{'  (stopped early)' if result.stopped_early else ''}")
     print(f"stop reason         {result.stop_reason}")
     print(f"archive             {report['archive_size']} factors in "
