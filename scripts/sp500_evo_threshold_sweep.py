@@ -123,13 +123,26 @@ def main() -> int:
     report_dir.mkdir(parents=True, exist_ok=True)
     grid.to_csv(report_dir / "evo_threshold_sweep.csv", index=False)
 
-    best = grid.loc[grid["top20_validation_ic"].idxmax()]
+    # Ties are real here, not hypothetical: a shared-subtree limit of 4 and one
+    # of 5 produced byte-identical archives on this candidate stream, because no
+    # candidate ever shared a subtree of exactly 4 nodes. `idxmax` would break
+    # that by row order, which is not a reason. Break it toward the STRICTER
+    # gate instead: a tie means the looser threshold bought nothing, and the
+    # stricter one makes the weaker claim about novelty.
+    tolerance = 1e-6
+    top = grid["top20_validation_ic"].max()
+    tied = grid[grid["top20_validation_ic"] >= top - tolerance]
+    best = tied.sort_values(["max_shared_subtree", "max_abs_corr"]).iloc[0]
+    if len(tied) > 1:
+        print(f"\n{len(tied)} cells within {tolerance} of the best validation IC; "
+              "broke the tie toward the stricter gate")
     payload = {
         "chosen": {
             "max_shared_subtree": int(best["max_shared_subtree"]),
             "max_abs_corr": float(best["max_abs_corr"]),
         },
-        "criterion": "archive top-20 equal-weight mean IC on the validation window",
+        "criterion": "archive top-20 equal-weight mean IC on the validation window, "
+                     "ties broken toward the stricter gate",
         "replayed_run": str(args.run),
         "grid": rows,
         "source": "scripts/sp500_evo_threshold_sweep.py, frozen after this sweep",
