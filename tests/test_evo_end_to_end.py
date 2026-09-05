@@ -164,7 +164,16 @@ def test_the_manifest_records_what_produced_the_run(tmp_path, bars, alphas):
     assert manifest["backend"] == "mock"
     assert manifest["config"]["seed"] == 7
     assert manifest["config"]["windows"]["fit_end"] == "2011-03-31"
-    assert manifest["config"]["gates"]["max_shared_subtree"] == 5
+    # The two swept thresholds come from configs/evo_thresholds.json once the
+    # sweep has frozen them, so the manifest is checked against what the config
+    # actually loads rather than against a literal that goes stale the moment
+    # the sweep runs.
+    from quantaalpha_us.evo.config import Gates
+
+    frozen = Gates.load()
+    assert manifest["config"]["gates"]["max_shared_subtree"] == frozen.max_shared_subtree
+    assert manifest["config"]["gates"]["max_abs_corr"] == frozen.max_abs_corr
+    assert manifest["config"]["gates"]["thresholds_source"] == frozen.thresholds_source
 
 
 def test_a_budget_below_the_planned_call_count_refuses_to_start(tmp_path, bars, alphas):
