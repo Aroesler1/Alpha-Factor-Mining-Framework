@@ -184,3 +184,40 @@ def test_dry_run_on_an_offline_backend_says_so_instead_of_inventing_a_command():
     request = ops.OperatorRequest(ops.EXPLORE, "a", 1, "p", ops.CANDIDATE_SCHEMA, 3)
     lines = dry_run_commands(MockBackend(seed=0), [request])
     assert "offline backend" in lines[0]
+
+
+def test_the_stop_message_names_the_limit_that_was_hit(tmp_path, bars, alphas):
+    """"Budget exhausted" was reported for a run that had used 107 of a million
+    allowed requests; the real cause was three consecutive failures, and the
+    message pointed the diagnosis the wrong way."""
+    from quantaalpha_us.evo.backends import BackendReply, MockBackend
+    from quantaalpha_us.llm.budget import RunBudget
+
+    class AlwaysFails(MockBackend):
+        def call(self, request):
+            self.calls += 1
+            return BackendReply(payload={}, error="simulated upstream failure")
+
+    config = make_config()
+    store = RunStore(tmp_path / "failing")
+    runner = EvolutionRunner(
+        config, PanelScorer(bars, config), AlwaysFails(seed=1), store,
+        alpha101=alphas,
+        budget=RunBudget(max_requests=10**6, max_total_tokens=10**9,
+                         max_consecutive_failures=3),
+        verbose=False,
+    )
+    with pytest.raises(RuntimeError, match="consecutive failed calls"):
+        runner.run()
+
+    # The constructor refuses a cap below the planned count, so the request-cap
+    # message is reached by lowering the cap after the run has started -- which
+    # is what a subscription cap looks like from inside a run.
+    tight = RunStore(tmp_path / "tight")
+    runner = EvolutionRunner(
+        config, PanelScorer(bars, config), MockBackend(seed=1), tight,
+        alpha101=alphas, verbose=False,
+    )
+    runner.budget.max_requests = 3
+    with pytest.raises(RuntimeError, match="request cap reached"):
+        runner.run()

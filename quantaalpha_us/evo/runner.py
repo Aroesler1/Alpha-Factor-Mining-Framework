@@ -484,9 +484,25 @@ class EvolutionRunner:
 
     def _call(self, request: ops.OperatorRequest) -> BackendReply:
         if not self.budget.can_request():
+            # Say WHICH limit stopped the run. "Budget exhausted" was reported
+            # for a run that had used 107 of a million allowed requests: the
+            # real cause was three consecutive failures, and the message sent
+            # the diagnosis in the wrong direction entirely.
+            budget = self.budget
+            if budget.requests_used >= budget.max_requests:
+                reason = (f"request cap reached ({budget.requests_used}/"
+                          f"{budget.max_requests})")
+            elif budget.total_tokens_used > budget.max_total_tokens:
+                reason = (f"token cap reached ({budget.total_tokens_used:,}/"
+                          f"{budget.max_total_tokens:,})")
+            else:
+                reason = (f"{budget.consecutive_failures} consecutive failed calls "
+                          f"(limit {budget.max_consecutive_failures}); the last one "
+                          f"was {request.operator}/{request.island} in round "
+                          f"{request.round}")
             raise RuntimeError(
-                f"budget exhausted at {self.budget.requests_used} requests; "
-                "re-run with --resume once the cap resets"
+                f"stopping after {budget.requests_used} requests: {reason}. "
+                "Re-run with --resume once the cause is cleared."
             )
         reply = self.backend.call(request)
         # written BEFORE parsing: a parse failure must not lose a paid call

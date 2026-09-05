@@ -87,7 +87,15 @@ def main() -> int:
                 backend = ReplayBackend.from_store(source)
                 runner = EvolutionRunner(
                     config, scorer, backend, store, alpha101=alphas,
-                    budget=RunBudget(max_requests=10**6, max_total_tokens=10**9),
+                    # A missing saved response is EXPECTED here and is not a
+                    # failure to stop on: under a different threshold an island
+                    # can ask for an operator the original run never called (no
+                    # cross-niche pair existed for CROSSOVER, say). Three of
+                    # those in a row tripped the consecutive-failure limit and
+                    # killed the sweep at its second combination. The count is
+                    # reported per combination instead.
+                    budget=RunBudget(max_requests=10**6, max_total_tokens=10**9,
+                                     max_consecutive_failures=10**6),
                     verbose=False,
                 )
                 result = runner.run()

@@ -205,7 +205,12 @@ def main() -> int:
 
     archive_table = pd.read_csv(report["archive"])
     if not archive_table.empty:
-        print("\ntop 10 by fitness:")
+        # the seeds are in the CSV (marked by operator) so the run is auditable,
+        # but they are not discoveries and every arm starts from the same ones
+        seeds = int((archive_table["operator"] == "seed").sum())
+        archive_table = archive_table[archive_table["operator"] != "seed"]
+        print(f"\ntop 10 discovered by fitness ({seeds} island seed(s) excluded; "
+              "they are in the CSV):")
         with pd.option_context("display.width", 200, "display.max_colwidth", 62):
             print(archive_table.nlargest(10, "fitness")[
                 ["fitness", "mean_ic", "tstat", "turnover", "niche", "operator",
