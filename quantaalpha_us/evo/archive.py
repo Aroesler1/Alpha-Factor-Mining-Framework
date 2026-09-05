@@ -36,7 +36,10 @@ import numpy as np
 
 from quantaalpha_us.evo.config import EvoConfig
 from quantaalpha_us.factors import ast_tools as at
-from quantaalpha_us.factors.factor_research import mean_daily_rank_correlation
+from quantaalpha_us.factors.factor_research import (
+    mean_daily_rank_correlation,
+    mean_daily_rank_correlation_many,
+)
 
 HORIZON_BUCKETS = ("fast", "medium", "slow")
 DATA_FAMILIES = ("price_volume", "fundamental", "mixed")
@@ -189,17 +192,18 @@ class Archive:
         answers "is this the same signal on a typical day" -- which is the
         question a dedup gate is asking.
         """
-        best, who = 0.0, ""
-        for entry in self.members():
-            if exclude is not None and entry.id == exclude:
-                continue
-            other = self.ranks.get(entry.id)
-            if other is None or other.shape != ranked.shape:
-                continue
-            corr = mean_daily_rank_correlation(ranked, other)
-            if np.isfinite(corr) and abs(corr) > best:
-                best, who = abs(corr), entry.expression
-        return best, who
+        rows = [e for e in self.members()
+                if e.id != exclude and self.ranks.get(e.id) is not None
+                and self.ranks[e.id].shape == ranked.shape]
+        if not rows:
+            return 0.0, ""
+        stack = np.stack([self.ranks[e.id] for e in rows])
+        correlations = np.abs(mean_daily_rank_correlation_many(ranked, stack))
+        if not np.isfinite(correlations).any():
+            return 0.0, ""
+        best_index = int(np.nanargmax(correlations))
+        best = float(correlations[best_index])
+        return best, rows[best_index].expression
 
     # ---- writes ----------------------------------------------------------
 

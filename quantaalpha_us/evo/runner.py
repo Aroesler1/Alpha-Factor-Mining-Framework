@@ -287,8 +287,13 @@ class EvolutionRunner:
 
         try:
             signal = self.scorer.evaluate(expression)
-        except ExpressionError as exc:
-            outcome = GateOutcome(False, "evaluation", str(exc)[:200])
+        except Exception as exc:  # noqa: BLE001
+            # Deliberately broad. ExpressionError is the contract, but a hole in
+            # the evaluator that raises something else must cost one candidate,
+            # not a run: this exact case (a panel reaching float() inside BOUND)
+            # killed a GP arm at round 5 after four hours of scoring.
+            kind = "evaluation" if isinstance(exc, ExpressionError) else "evaluation_crash"
+            outcome = GateOutcome(False, kind, f"{type(exc).__name__}: {exc}"[:200])
             self._reject(expression=expression, outcome=outcome, operator=operator,
                          island=island, round_index=round_index, counter=counter)
             return None, outcome

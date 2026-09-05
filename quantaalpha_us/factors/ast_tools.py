@@ -585,10 +585,19 @@ def slot_kinds(node: Node) -> dict[tuple[int, ...], str]:
     """
     out: dict[tuple[int, ...], str] = {(): PANEL_SLOT}
 
-    def walk(current: Node, prefix: tuple[int, ...]) -> None:
-        if current.label in _INFIX or current.label == "neg":
-            # arithmetic and comparison operands: a panel is always legal there,
-            # and so is a scalar, so the permissive label is the correct one
+    def walk(current: Node, prefix: tuple[int, ...], inherited: str) -> None:
+        if inherited in (WINDOW_SLOT, SCALAR_SLOT):
+            # A scalar or window position stays scalar all the way down. `-3` in
+            # BOUND(x, -3, 3) parses as neg(#3), and treating that #3 as a panel
+            # slot let CROSSOVER graft a whole panel into it: the expression
+            # sanitized, and then the evaluator died on float(DataFrame) eight
+            # hours into a run. Arithmetic under a scalar slot is still
+            # arithmetic on scalars.
+            kinds = [inherited] * len(current.children)
+        elif current.label in _INFIX or current.label == "neg":
+            # arithmetic and comparison operands in a PANEL position: a panel is
+            # always legal there, and so is a scalar, so the permissive label is
+            # the correct one
             kinds = [PANEL_SLOT] * len(current.children)
         else:
             sig = None
@@ -607,9 +616,9 @@ def slot_kinds(node: Node) -> dict[tuple[int, ...], str]:
         for i, child in enumerate(current.children):
             path = prefix + (i,)
             out[path] = kinds[i]
-            walk(child, path)
+            walk(child, path, kinds[i])
 
-    walk(node, ())
+    walk(node, (), PANEL_SLOT)
     return out
 
 

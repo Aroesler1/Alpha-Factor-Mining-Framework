@@ -523,3 +523,36 @@ def test_the_strided_half_life_curve_puts_factors_in_the_same_bucket(tmp_path):
         assert horizon_bucket(strided) == horizon_bucket(full), (
             expression, strided, full
         )
+
+
+def test_the_batched_correlation_matches_the_per_pair_reference():
+    """The archive gate compares against up to 144 members at once. The batched
+    form expands the per-day correlation into raw sums rather than centring, so
+    it has to be pinned against the definition it replaced."""
+    from quantaalpha_us.factors.factor_research import (
+        mean_daily_rank_correlation,
+        mean_daily_rank_correlation_many,
+    )
+
+    rng = np.random.default_rng(0)
+    a = rng.random((60, 40)).astype(np.float32)
+    stack = rng.random((7, 60, 40)).astype(np.float32)
+    # a realistic missing pattern: each matrix defined on its own subset
+    a[rng.random(a.shape) < 0.3] = np.nan
+    stack[rng.random(stack.shape) < 0.3] = np.nan
+    stack[0] = a  # one exact duplicate, which must come back as 1.0
+
+    batched = mean_daily_rank_correlation_many(a, stack, min_cross_section=5)
+    for i in range(stack.shape[0]):
+        reference = mean_daily_rank_correlation(a, stack[i], min_cross_section=5)
+        assert batched[i] == pytest.approx(reference, abs=1e-9, nan_ok=True), i
+    assert batched[0] == pytest.approx(1.0)
+
+
+def test_the_batched_correlation_handles_an_empty_and_a_mismatched_stack():
+    from quantaalpha_us.factors.factor_research import mean_daily_rank_correlation_many
+
+    a = np.zeros((5, 4), dtype=np.float32)
+    assert mean_daily_rank_correlation_many(a, np.zeros((0, 5, 4), np.float32)).shape == (0,)
+    mismatched = mean_daily_rank_correlation_many(a, np.zeros((2, 9, 9), np.float32))
+    assert np.isnan(mismatched).all()

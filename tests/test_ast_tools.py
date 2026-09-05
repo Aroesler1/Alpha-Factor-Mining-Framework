@@ -420,3 +420,29 @@ def test_the_cached_map_form_of_shared_subtree_agrees_with_the_direct_one():
             assert at.largest_shared_from_maps(maps[a], maps[b]) == (
                 at.largest_shared_subtree_expr(a, b)
             ), (a, b)
+
+
+def test_a_negated_literal_in_a_scalar_slot_is_not_a_panel_slot():
+    """Regression. `-3` in BOUND(x, -3, 3) parses as neg(#3); treating that #3
+    as a panel position let CROSSOVER graft a panel into a numeric bound, which
+    sanitized cleanly and then killed the evaluator on float(DataFrame)."""
+    tree = at.parse("BOUND($return, -3, 3)")
+    kinds = at.slot_kinds(tree)
+    assert kinds[(1,)] == at.SCALAR_SLOT
+    assert kinds[(1, 0)] == at.SCALAR_SLOT
+    assert (1, 0) not in set(at.panel_paths(tree))
+
+
+def test_scalar_and_window_slots_stay_scalar_all_the_way_down():
+    for expr in ("BOUND($return, -3, 3)", "POWER($close, -2)",
+                 "TS_MEAN($close, 21)", "COUNT($close > 0, 5)"):
+        tree = at.parse(expr)
+        kinds = at.slot_kinds(tree)
+        panel = set(at.panel_paths(tree))
+        for path, kind in kinds.items():
+            if kind in (at.SCALAR_SLOT, at.WINDOW_SLOT):
+                # every descendant of a scalar or window position is also one
+                for other, other_kind in kinds.items():
+                    if len(other) > len(path) and other[:len(path)] == path:
+                        assert other_kind == kind, (expr, other)
+                        assert other not in panel

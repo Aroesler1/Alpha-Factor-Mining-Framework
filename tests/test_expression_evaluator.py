@@ -301,3 +301,25 @@ def test_dedup_catches_a_monotone_transform_of_a_kept_factor():
                                    max_abs_corr=0.7, max_factors=10)
     assert len(selected) == 1, f"a monotone transform survived dedup: {selected}"
     assert "raw" in selected[0]
+
+
+def test_bound_rejects_a_panel_where_a_numeric_bound_belongs():
+    """BOUND raised a bare TypeError from float() instead of the
+    ExpressionError every other failure here raises, so a caller that catches
+    ExpressionError lost the whole run rather than one expression."""
+    import pytest
+
+    from quantaalpha_us.factors.expression_evaluator import (
+        ExpressionError,
+        ExpressionEvaluator,
+        build_field_panels,
+    )
+
+    evaluator = ExpressionEvaluator(build_field_panels(_bars()))
+    with pytest.raises(ExpressionError, match="not a panel"):
+        evaluator.evaluate("BOUND($close, -($volume), 3)")
+    with pytest.raises(ExpressionError, match="not a panel"):
+        evaluator.evaluate("BOUND($close, -3, $volume)")
+    # POWER is deliberately NOT restricted: rank(x) ** rank(y) appears in the
+    # published Alpha101 set, and elementwise ** handles it.
+    assert evaluator.evaluate("POWER(CS_RANK($close), CS_RANK($volume))").shape[1] > 0
