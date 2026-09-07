@@ -162,6 +162,33 @@ class GateRunner:
         self._nearest_edit_cache[expression] = result
         return result
 
+    def nearest_alpha101_excluding(self, expression: str) -> tuple[int, int]:
+        """(largest shared subtree, edit distance) against every alpha BUT itself.
+
+        Only the Alpha101 baseline needs this, and it needs it badly: comparing
+        a published alpha against a set that contains it reports that it matches
+        itself, which is not a statistic.
+        """
+        try:
+            tree = at.parse(expression)
+            candidate = at.subtree_sizes(tree)
+        except at.ParseError:
+            return 0, -1
+        own = at.canonical_text(tree)
+        best_shared, best_distance = 0, None
+        for expr, other in self.alpha101:
+            try:
+                if at.canonical_text(other) == own:
+                    continue
+            except at.ParseError:
+                continue
+            shared = at.largest_shared_from_maps(candidate, at.subtree_sizes(other))
+            best_shared = max(best_shared, shared)
+            distance = at.tree_edit_distance(tree, other)
+            if best_distance is None or distance < best_distance:
+                best_distance = distance
+        return best_shared, (best_distance if best_distance is not None else -1)
+
     # ---- panel-backed ----------------------------------------------------
 
     def coverage_gate(self, coverage: float) -> GateOutcome:

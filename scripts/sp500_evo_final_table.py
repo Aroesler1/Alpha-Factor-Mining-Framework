@@ -120,7 +120,16 @@ def combined_holdout_ic(scorer: PanelScorer, expressions, signs,
 
 
 def summarise_arm(name: str, entries, scorer: PanelScorer, gates: GateRunner,
-                  store: RunStore | None, random_crit: float) -> dict:
+                  store: RunStore | None, random_crit: float,
+                  exclude_self: bool = False) -> dict:
+    """One arm's row, its per-factor detail, and its combined IC series.
+
+    `exclude_self` matters for exactly one arm: the Alpha101 baseline, whose
+    members ARE published alphas. Comparing each of them against the published
+    set including itself reported a median shared subtree of 16 nodes and a
+    median edit distance of 0, which says nothing except that a formula matches
+    itself.
+    """
     top = sorted(entries, key=lambda e: (-e.fitness, e.admitted_at))[:TOP_N]
     expressions = [e.expression for e in top]
     signs = [int((e.metrics or {}).get("sign", 1)) for e in top]
@@ -131,8 +140,11 @@ def summarise_arm(name: str, entries, scorer: PanelScorer, gates: GateRunner,
         signal = scorer.evaluate(entry.expression)
         holdout = scorer.holdout_ic_series(signal, sign)
         fit_ic = float((entry.metrics or {}).get("mean_ic", np.nan))
-        shared, alpha_expr = gates.max_shared_alpha101(entry.expression)
-        distance, _ = gates.nearest_alpha101_edit(entry.expression)
+        if exclude_self:
+            shared, distance = gates.nearest_alpha101_excluding(entry.expression)
+        else:
+            shared, _ = gates.max_shared_alpha101(entry.expression)
+            distance, _ = gates.nearest_alpha101_edit(entry.expression)
         half_life = (entry.metrics or {}).get("half_life")
         if half_life is None:
             half_life = np.inf if (entry.metrics or {}).get(
@@ -307,7 +319,7 @@ def main() -> int:
             metrics=metrics.to_dict(),
         ), ranked)
     summaries["alpha101"] = summarise_arm("alpha101", baseline_archive.members(), scorer,
-                                          gates, None, random_crit)
+                                          gates, None, random_crit, exclude_self=True)
 
     # ---- the combinations ------------------------------------------------
     combos = []

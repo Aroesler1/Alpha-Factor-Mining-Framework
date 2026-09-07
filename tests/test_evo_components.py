@@ -556,3 +556,15 @@ def test_the_batched_correlation_handles_an_empty_and_a_mismatched_stack():
     assert mean_daily_rank_correlation_many(a, np.zeros((0, 5, 4), np.float32)).shape == (0,)
     mismatched = mean_daily_rank_correlation_many(a, np.zeros((2, 9, 9), np.float32))
     assert np.isnan(mismatched).all()
+
+
+def test_a_published_alpha_is_not_compared_against_itself(gates):
+    """The Alpha101 baseline reported a median shared subtree of 16 nodes and a
+    median edit distance of 0, which only said that a formula matches itself."""
+    published = "-1 * TS_CORR(CS_RANK($open), CS_RANK($volume), 10)"
+    shared, distance = gates.nearest_alpha101_excluding(published)
+    assert distance > 0, "a published alpha matched itself"
+    assert shared < at.size(at.parse(published))
+    # and the self-inclusive version still reports the trivial self-match
+    assert gates.max_shared_alpha101(published)[0] == at.size(at.parse(published))
+    assert gates.nearest_alpha101_edit(published)[0] == 0
