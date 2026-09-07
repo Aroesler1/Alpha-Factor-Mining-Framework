@@ -33,6 +33,10 @@ from quantaalpha_us.evo.archive import Archive, ArchiveEntry, load_archive  # no
 from quantaalpha_us.evo.config import EvoConfig  # noqa: E402
 from quantaalpha_us.evo.fitness import GateRunner  # noqa: E402
 from quantaalpha_us.evo.persistence import RunStore, token_totals  # noqa: E402
+from quantaalpha_us.evo.report import (  # noqa: E402
+    candidates_generated,
+    rejection_tally,
+)
 from quantaalpha_us.evo.scoring import PanelScorer, candidate_id  # noqa: E402
 from quantaalpha_us.factors import alpha101  # noqa: E402
 from quantaalpha_us.factors.factor_research import _daily_spearman_ic  # noqa: E402
@@ -170,17 +174,41 @@ def summarise_arm(name: str, entries, scorer: PanelScorer, gates: GateRunner,
     equal_weight = pd.concat(ic_frames, axis=1).mean(axis=1) if ic_frames else pd.Series(dtype=float)
     detail = pd.DataFrame(per_factor)
 
-    generated = len(store.candidates()) + len(store.rejections()) if store else len(entries)
-    rejections = {}
-    if store:
-        for record in store.rejections():
-            rejections[record["gate"]] = rejections.get(record["gate"], 0) + 1
+    # One definition of "generated" for every arm: everything that was scored,
+    # plus everything that was rejected. The two files partition the proposals
+    # exactly once each, so nothing is double counted and nothing is dropped.
+    # It runs nine higher than the round counters' proposal total for every arm,
+    # and that nine is the island seeds, which are scored at round 0 and are not
+    # proposals.
+    generated = candidates_generated(store) if store else len(entries)
+
+    # Two kinds of rejection, kept apart because they mean different things.
+    #
+    # A GATE rejection is a candidate that never earned a score: it failed the
+    # sanitizer, the complexity limits, a paraphrase check, coverage,
+    # correlation or the cheap screen. Those are in rejections.jsonl.
+    #
+    # An ARCHIVE refusal is a candidate that passed every gate, was scored, and
+    # was still turned away because its niche was full and it did not beat the
+    # weakest member. Those were only ever counted in memory and written into
+    # each round's summary, so reading rejections.jsonl alone understated the
+    # tally by 5 to 38 depending on the arm.
+    #
+    # An archive-refused candidate is already inside `generated` via
+    # candidates.jsonl -- it WAS scored -- so it is a subset of the scored
+    # candidates, not an extra proposal. Adding it to `generated` as well would
+    # count it twice.
+    rejections, archive_refusals = rejection_tally(store) if store else ({}, {})
+    tally = {**rejections, **archive_refusals}
 
     niches = len({tuple(e.niche) for e in entries})
+    totals = token_totals(store) if store else {}
     row = {
         "arm": name,
         "candidates_generated": generated,
         "gate_rejections": sum(rejections.values()),
+        "archive_refusals": sum(archive_refusals.values()),
+        "rejections_total": sum(tally.values()),
         "archive_size": len(entries),
         "niches_filled": niches,
         "top20_median_retention": float(detail["retention"].median()) if len(detail) else np.nan,
@@ -197,7 +225,18 @@ def summarise_arm(name: str, entries, scorer: PanelScorer, gates: GateRunner,
         "share_half_life_beyond_grid": (float(np.isinf(detail["half_life"]).mean())
                                         if len(detail) else np.nan),
         "mean_turnover": float(detail["turnover"].mean()) if len(detail) else np.nan,
-        "rejections_by_gate": "; ".join(f"{k}={v}" for k, v in sorted(rejections.items())),
+        # Sourced from the live run directory's saved envelopes, never from
+        # manifest.json's budget block and never from summing rounds.jsonl.
+        # Both of those undercount an arm that was resumed: the budget block
+        # records what one process was allowed rather than what was spent, and a
+        # round row only knows the calls that process made. The two salvaged
+        # one-shot arms are exactly that case.
+        "model_calls": totals.get("calls", 0),
+        "total_tokens": totals.get("total_tokens", 0),
+        "output_tokens": totals.get("output_tokens", 0),
+        "cost_usd": totals.get("cost_usd"),
+        "model_minutes": totals.get("model_wall_clock_minutes", 0.0),
+        "rejections_by_gate": "; ".join(f"{k}={v}" for k, v in sorted(tally.items())),
     }
     return {"row": row, "detail": detail, "top": top, "expressions": expressions,
             "signs": signs, "equal_weight_ic": equal_weight}
@@ -430,13 +469,23 @@ def main() -> int:
                   f"[{row['lo']:+.5f}, {row['hi']:+.5f}]  p = {row['p']:.3f}  "
                   f"({int(row['days'])} days)")
 
-    print("\ntokens and wall clock per arm\n")
+    print("\ntokens and wall clock per arm, from the saved envelopes in each live "
+          "run directory\n")
     for path in arm_dirs:
         totals = token_totals(RunStore(path))
         print(f"  {path.name:<18}{totals['calls']:>5} calls  "
               f"{totals['total_tokens']:>12,} tokens  "
+              f"{totals['output_tokens']:>9,} out  "
               f"{totals['model_wall_clock_minutes']:>8.1f} min in model calls"
               + (f"  ${totals['cost_usd']:.2f}" if totals["cost_usd"] is not None else ""))
+    print("\n  gp-loop's token and duration figures are synthetic bookkeeping. Its "
+          "backend\n  draws from the grammar in process and never calls a model, so "
+          "the numbers are\n  what the mock envelope recorded, not work anyone paid "
+          "for. Its cost is zero.")
+    print("  The two one-shot arms were rebuilt from replies bought by an earlier "
+          "crashed\n  attempt. Those attempts are preserved in the -raw directories and "
+          "are real paid\n  work, correctly excluded here: this table reports the arm "
+          "that exists, not the\n  arithmetic of getting to it.")
 
     print(f"\n-> {out_dir / 'evo_final_table.csv'}")
     print(f"-> {out_dir / 'evo_combined_table.csv'}")

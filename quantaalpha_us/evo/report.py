@@ -75,6 +75,49 @@ def rejection_counts(store: RunStore) -> pd.DataFrame:
     return counts.sort_values("count", ascending=False).reset_index(drop=True)
 
 
+def rejection_tally(store: RunStore) -> tuple[dict[str, int], dict[str, int]]:
+    """(gate rejections, archive refusals) for one arm, from the two places they live.
+
+    A GATE rejection never earned a score: sanitizer, complexity, a paraphrase
+    check, coverage, correlation or the cheap screen. Those are appended to
+    rejections.jsonl as they happen.
+
+    An ARCHIVE refusal passed every gate and was scored, and was still turned
+    away because its niche was full and it did not beat the weakest member.
+    Those were only ever incremented in memory and folded into the round
+    summary, so a tally read from rejections.jsonl alone understates the total
+    by 5 to 38 depending on the arm.
+
+    They are returned separately rather than merged because they answer
+    different questions -- how much of the search was unusable, against how much
+    was usable but crowded out -- and because an archive refusal is already
+    counted among the SCORED candidates, so adding it to a proposal count would
+    count it twice.
+    """
+    gates: dict[str, int] = {}
+    for record in store.rejections():
+        gate = record.get("gate", "")
+        gates[gate] = gates.get(gate, 0) + 1
+    archive: dict[str, int] = {}
+    for round_record in store.rounds():
+        for gate, count in (round_record.get("rejections") or {}).items():
+            if gate.startswith("archive:"):
+                archive[gate] = archive.get(gate, 0) + int(count)
+    return gates, archive
+
+
+def candidates_generated(store: RunStore) -> int:
+    """Every proposal an arm produced, counted exactly once.
+
+    The two files partition the proposals: a candidate is either scored and
+    written to candidates.jsonl, or rejected at a gate and written to
+    rejections.jsonl. Never both. The figure runs nine above the round
+    counters' proposal total for every arm in this experiment, and that nine is
+    the island seeds, which are scored at round 0 and are not proposals.
+    """
+    return len(store.candidates()) + len(store.rejections())
+
+
 def niche_frame(archive: Archive) -> pd.DataFrame:
     return pd.DataFrame(archive.niche_summary())
 

@@ -568,3 +568,97 @@ def test_a_published_alpha_is_not_compared_against_itself(gates):
     # and the self-inclusive version still reports the trivial self-match
     assert gates.max_shared_alpha101(published)[0] == at.size(at.parse(published))
     assert gates.nearest_alpha101_edit(published)[0] == 0
+
+
+# ---- rejection accounting ------------------------------------------------
+
+
+def _store_with(tmp_path, *, candidates, gate_rejections, rounds):
+    from quantaalpha_us.evo.persistence import RunStore
+
+    store = RunStore(tmp_path)
+    for record in candidates:
+        store.record_candidate(record)
+    for record in gate_rejections:
+        store.record_rejection(record)
+    for record in rounds:
+        store.record_round(record)
+    return store
+
+
+def test_archive_refusals_are_counted_even_though_no_gate_logged_them(tmp_path):
+    """A candidate that passed every gate, was scored, and was still turned away
+    because its niche was full was only ever counted in memory. Reading
+    rejections.jsonl alone understated the tally by 5 to 38 per arm."""
+    from quantaalpha_us.evo.report import rejection_tally
+
+    store = _store_with(
+        tmp_path,
+        candidates=[{"round": 1, "id": "a", "expression": "$close"},
+                    {"round": 1, "id": "b", "expression": "$open"}],
+        gate_rejections=[{"round": 1, "gate": "coverage", "expression": "x"},
+                         {"round": 1, "gate": "coverage", "expression": "y"},
+                         {"round": 1, "gate": "cheap_screen", "expression": "z"}],
+        rounds=[{"round": 1, "rejections": {"coverage": 2, "cheap_screen": 1,
+                                            "archive:niche_full_and_not_better": 4}}],
+    )
+    gates, archive = rejection_tally(store)
+    assert gates == {"coverage": 2, "cheap_screen": 1}
+    assert archive == {"archive:niche_full_and_not_better": 4}
+    assert sum(gates.values()) + sum(archive.values()) == 7
+
+
+def test_the_two_kinds_of_rejection_are_not_merged(tmp_path):
+    """They answer different questions, and merging them would also imply an
+    archive refusal was an extra proposal when it is a scored candidate."""
+    from quantaalpha_us.evo.report import candidates_generated, rejection_tally
+
+    store = _store_with(
+        tmp_path,
+        candidates=[{"round": 1, "id": str(i), "expression": "$close"} for i in range(5)],
+        gate_rejections=[{"round": 1, "gate": "complexity", "expression": "x"}],
+        rounds=[{"round": 1, "rejections": {"complexity": 1,
+                                            "archive:niche_full_and_not_better": 3}}],
+    )
+    gates, archive = rejection_tally(store)
+    assert sum(gates.values()) == 1
+    assert sum(archive.values()) == 3
+    # the three refused candidates were scored, so they are inside `generated`
+    # already; counting them again would make generated 9 instead of 6
+    assert candidates_generated(store) == 6
+
+
+def test_rounds_without_a_rejections_block_do_not_break_the_tally(tmp_path):
+    from quantaalpha_us.evo.report import rejection_tally
+
+    store = _store_with(tmp_path, candidates=[], gate_rejections=[],
+                        rounds=[{"round": 1}, {"round": 2, "rejections": None}])
+    assert rejection_tally(store) == ({}, {})
+
+
+def test_every_real_arm_has_archive_refusals_that_only_rounds_jsonl_knows(tmp_path):
+    """Applied uniformly: every arm in this experiment has some, and none of
+    them appear in rejections.jsonl."""
+    from pathlib import Path
+
+    from quantaalpha_us.evo.persistence import RunStore
+    from quantaalpha_us.evo.report import rejection_tally
+
+    runs = Path(__file__).resolve().parent.parent / "data" / "evo_runs"
+    arms = [d for d in sorted(runs.glob("*"))
+            if d.is_dir() and not d.name.endswith("-raw") and (d / "rounds.jsonl").exists()]
+    if not arms:
+        pytest.skip("no run directories present")
+    total_archive = 0
+    for arm in arms:
+        gates, archive = rejection_tally(RunStore(arm))
+        total_archive += sum(archive.values())
+        # The invariant that matters, and it must hold for EVERY arm including
+        # one that is mid-run: an archive refusal must never also be in
+        # rejections.jsonl, or the tally counts it twice.
+        assert not any(key.startswith("archive:") for key in gates), (
+            f"{arm.name} has archive refusals in rejections.jsonl, so they would double count"
+        )
+    # Asserted over the set rather than per arm: a run still in progress has a
+    # partially rebuilt rounds.jsonl, and this test should not fail for that.
+    assert total_archive > 0, "no arm logged an archive refusal, so the tally proves nothing"
