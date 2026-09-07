@@ -1,0 +1,17 @@
+{
+  "capacity": 12,
+  "rules": [
+    "Don't just flip the outer operator on a pair accepted earlier the same round: CS_RANK(TS_STD($return,5))*TS_RANK($dollar_volume,63) was accepted at 1.763; its minus variant was rejected right after as archive_subtree (4 shared nodes).",
+    "$book_per_share paired with a second fundamental gave this round's top fitness (4.326, bare CS_RANK($book_per_share)*CS_RANK($roa), no ratio) plus two more accepts (3.909, 2.171 as a ratio denominator); try it next with leverage, operating_margin, or asset_turnover.",
+    "MAX/MIN(fundamental, 0) truncation extended beyond eps this round: accrual_gap, roe, and roa all accepted with it. Still untried: leverage, operating_margin, asset_turnover, book_per_share.",
+    "Guarded-ratio chassis on DELAY-lagged fields is saturated at the wrapper level: TS_STD($open/(DELAY($close,21)+1e-8),10) shared 7 nodes with the archived TS_MEAN version of the same payload. Swapping only the outer TS aggregator doesn't dodge archive_subtree.",
+    "Rank each fundamental leg separately before multiplying them together \u2014 multiplying two raw legs (especially a 63-day fundamental delta) and ranking the product afterward caused 4 of this round's 6 cheap_screen failures, while rank-then-multiply produced both fundamental x fundamental accepts.",
+    "Treat $earnings_per_share crossed with any close/high/low/volume-derived ratio, spread, or product as closed \u2014 it drove 6 of 18 rejects this round (duplicates, a correlation, an archive_subtree share, two failed mutation escapes) and zero accepts.",
+    "After a proposal is rejected as a duplicate, fix it by changing one operator or window inside the existing second leg rather than swapping in a different subtree \u2014 two such escape attempts this round were rejected for drifting too far from the parent instead.",
+    "Downside truncation (MIN(fundamental, 0)) keeps outscoring the raw level, delta, spread, or z-score of the same field \u2014 this round's best score (4.545) was a bare truncated operating_margin with no second leg at all.",
+    "In close-position-in-range ratios, keep $low feeding the rolling floor and $high feeding the rolling ceiling \u2014 substituting $close or $open into either extremum term failed the cheap screen twice and re-derived an existing accepted version once.",
+    "The TS_MEAN(($close-$low)/denominator, 10) shape is exhausted across dollar-volume and close-rank denominators \u2014 two duplicates and a 0.88 correlation this round; swapping only the denominator won't open new space here.",
+    "A price-dispersion statistic (e.g. rolling std of close) divided by a fundamental is a fresh, strong template \u2014 this round's top score (4.991) used exactly this shape and it hasn't been tried against other fundamentals yet.",
+    "A fundamental rank multiplied by a rank of a long-window (126-day) summed return cleared the screen even though bare and short-window return terms keep failing \u2014 window length and rank-then-combine order matter more here than avoiding $return altogether."
+  ]
+}

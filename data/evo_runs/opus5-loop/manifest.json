@@ -1,0 +1,84 @@
+{
+  "backend": "claude-code",
+  "budget": {
+    "consecutive_failures": 0,
+    "max_consecutive_failures": 3,
+    "max_requests": 140,
+    "max_total_tokens": 1000000000,
+    "requests_used": 0,
+    "total_tokens_used": 0
+  },
+  "config": {
+    "arm": "opus5-loop",
+    "bootstrap_block": 21,
+    "bootstrap_draws": 200,
+    "calibration": {
+      "alpha101_turnover_median": 0.3123036966476347,
+      "source": "scripts/sp500_evo_calibrate.py on the fit window"
+    },
+    "correlation_date_stride": 10,
+    "effort": "max",
+    "feedback_mode": "full",
+    "fitness": {
+      "complexity_penalty_per_unit": 0.1,
+      "free_base_fields": 3,
+      "free_constants": 1,
+      "stability_floor": 0.5,
+      "turnover_cost_bps": 0.5
+    },
+    "gates": {
+      "cheap_min_abs_t": 1.0,
+      "max_abs_corr": 0.8,
+      "max_base_fields": 5,
+      "max_depth": 6,
+      "max_free_constants": 4,
+      "max_mutation_edits": 3,
+      "max_shared_subtree": 4,
+      "max_symbol_length": 200,
+      "min_coverage": 0.9,
+      "min_crossover_shared": 3,
+      "simplify_min_ic_share": 0.8,
+      "thresholds_source": "scripts/sp500_evo_threshold_sweep.py, frozen after this sweep"
+    },
+    "islands": [
+      "price_trend",
+      "liquidity_volume",
+      "fundamental_quality"
+    ],
+    "mode": "loop",
+    "model": "claude-opus-5",
+    "schedule": {
+      "archive_per_niche": 8,
+      "crossover_n": 8,
+      "early_stop_patience": 2,
+      "elite": 5,
+      "explore_n": 10,
+      "memory_ask_rules": 8,
+      "memory_max_rules": 12,
+      "migrate_every": 2,
+      "migrate_n": 2,
+      "mutate_n": 10,
+      "population": 30,
+      "reset_every": 4,
+      "rounds": 8,
+      "simplify_n": 2,
+      "sparse_niche_threshold": 3,
+      "sparse_niche_weight": 2.0,
+      "stale_rounds": 2,
+      "stale_weight": 0.5,
+      "tournament": 3
+    },
+    "seed": 20260904,
+    "windows": {
+      "cheap_start": "2011-01-01",
+      "fit_end": "2013-12-31",
+      "fit_start": "2000-01-01",
+      "holdout_end": "2025-12-31",
+      "holdout_start": "2018-01-01",
+      "validation_end": "2017-12-31",
+      "validation_start": "2014-01-01"
+    }
+  },
+  "effort": "max",
+  "model": "claude-opus-5"
+}

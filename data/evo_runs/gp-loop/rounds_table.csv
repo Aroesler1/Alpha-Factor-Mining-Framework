@@ -1,0 +1,6 @@
+admitted,archive_size,best_fitness,calls,migrated,niches_filled,proposals,rejections,reseeded,round,scored,seconds,total_tokens,validation_top20_ic
+10,10,5.301286642009769,14,,6,44,archive_subtree=8; cheap_screen=7; complexity=3; correlation=6; coverage=10,,1,10,37.0,14320,0.004268811486896137
+13,22,5.301286642009769,15,fundamental_quality=0; liquidity_volume=1; price_trend=1,12,84,archive_subtree=33; cheap_screen=9; complexity=12; correlation=6; coverage=9; duplicate=2,,2,13,44.2,23594,0.0041366543304196
+8,26,5.301286642009769,15,,12,84,alpha101_subtree=1; archive_subtree=29; cheap_screen=14; complexity=5; correlation=13; coverage=11; duplicate=3,,3,8,34.2,23410,0.006135567812510673
+8,31,5.301286642009769,15,fundamental_quality=0; liquidity_volume=0; price_trend=0,12,84,archive:niche_full_and_not_better=2; archive_subtree=23; cheap_screen=12; complexity=7; correlation=21; coverage=10; duplicate=1,price_trend,4,10,43.8,23451,0.005167161530032218
+11,39,5.301286642009769,15,,14,81,archive:niche_full_and_not_better=3; archive_subtree=21; cheap_screen=7; complexity=4; correlation=19; coverage=6; duplicate=10,,5,14,39.9,23628,0.005154595436802847

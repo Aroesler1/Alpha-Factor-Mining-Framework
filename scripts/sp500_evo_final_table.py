@@ -315,8 +315,14 @@ def main() -> int:
           f"{len(fit_ic):,} complete-case days)", flush=True)
 
     runs_dir = Path(args.runs_dir)
-    arm_dirs = sorted(p for p in runs_dir.iterdir() if (p / "archive.jsonl").exists()) \
-        if runs_dir.exists() else []
+    # A "-raw" directory is a crashed pre-fix attempt kept for the record: real
+    # paid work, but not an arm. Including one would report the same arm twice
+    # under two names and double its apparent token cost. Underscore-prefixed
+    # directories are scratch areas (the salvage holding pen, the replay check).
+    arm_dirs = sorted(p for p in runs_dir.iterdir()
+                      if p.is_dir() and (p / "archive.jsonl").exists()
+                      and not p.name.endswith("-raw")
+                      and not p.name.startswith("_")) if runs_dir.exists() else []
     if args.arms:
         arm_dirs = [p for p in arm_dirs if p.name in args.arms]
     if not arm_dirs:
@@ -333,32 +339,47 @@ def main() -> int:
         summaries[path.name] = summarise_arm(path.name, archive.discovered(), scorer,
                                              gates, store, random_crit)
 
-    # Alpha101 through the same archive rules, minus the paraphrase gate, which
-    # would reject every published alpha for being itself.
-    print("scoring the alpha101 baseline through the same archive rules ...", flush=True)
-    baseline_config = config.with_thresholds(max_shared_subtree=10**6,
-                                             max_abs_corr=config.gates.max_abs_corr)
-    baseline_archive = Archive(baseline_config)
-    baseline_gates = GateRunner(baseline_config, [])
-    for alpha in alphas:
-        try:
-            signal = scorer.evaluate(alpha.expression)
-        except Exception:  # noqa: BLE001
-            continue
-        if not baseline_gates.coverage_gate(scorer.coverage(signal)).passed:
-            continue
-        ranked = scorer.ranked_fit(signal)
-        if not baseline_gates.correlation_gate(ranked, baseline_archive).passed:
-            continue
-        metrics = scorer.metrics(alpha.expression, signal)
-        baseline_archive.try_admit(ArchiveEntry(
-            id=candidate_id(alpha.expression), expression=alpha.expression,
-            fitness=metrics.fitness, niche=metrics.niche, round=0, island="published",
-            operator="alpha101", parent_ids=(), rationale=alpha.name,
-            metrics=metrics.to_dict(),
-        ), ranked)
-    summaries["alpha101"] = summarise_arm("alpha101", baseline_archive.members(), scorer,
-                                          gates, None, random_crit, exclude_self=True)
+    # The two reference sets, through the same archive rules the arms face.
+    #
+    # The paraphrase gate is lifted for both, for different reasons. Alpha101
+    # would otherwise reject every published alpha for being itself. The random
+    # pool has no reason to be judged against a literature it never read: it is
+    # the null, and the null's job is to show what this grammar produces from
+    # nothing, not to be filtered by novelty.
+    #
+    # Everything else -- coverage, correlation dedup, niche capacity, the same
+    # fitness -- applies identically, which is what makes the rows comparable.
+    def score_baseline(label: str, items, *, exclude_self: bool = False):
+        print(f"scoring the {label} baseline through the same archive rules "
+              f"({len(items)} expressions) ...", flush=True)
+        baseline_config = config.with_thresholds(
+            max_shared_subtree=10**6, max_abs_corr=config.gates.max_abs_corr)
+        baseline_archive = Archive(baseline_config)
+        baseline_gates = GateRunner(baseline_config, [])
+        for expression, rationale in items:
+            try:
+                signal = scorer.evaluate(expression)
+            except Exception:  # noqa: BLE001
+                continue
+            if not baseline_gates.coverage_gate(scorer.coverage(signal)).passed:
+                continue
+            ranked = scorer.ranked_fit(signal)
+            if not baseline_gates.correlation_gate(ranked, baseline_archive).passed:
+                continue
+            metrics = scorer.metrics(expression, signal)
+            baseline_archive.try_admit(ArchiveEntry(
+                id=candidate_id(expression), expression=expression,
+                fitness=metrics.fitness, niche=metrics.niche, round=0,
+                island="reference", operator=label, parent_ids=(), rationale=rationale,
+                metrics=metrics.to_dict(),
+            ), ranked)
+        return summarise_arm(label, baseline_archive.members(), scorer, gates, None,
+                             random_crit, exclude_self=exclude_self)
+
+    summaries["alpha101"] = score_baseline(
+        "alpha101", [(a.expression, a.name) for a in alphas], exclude_self=True)
+    summaries["random-grammar"] = score_baseline(
+        "random-grammar", [(e, "random grammar draw") for e in random_exprs])
 
     # ---- the combinations ------------------------------------------------
     combos = []
@@ -469,6 +490,39 @@ def main() -> int:
                   f"[{row['lo']:+.5f}, {row['hi']:+.5f}]  p = {row['p']:.3f}  "
                   f"({int(row['days'])} days)")
 
+    print("\nhow each arm stopped, and its per-round validation curve\n")
+    for path in arm_dirs:
+        store = RunStore(path)
+        rounds = store.rounds()
+        if not rounds:
+            print(f"  {path.name:<18}no completed rounds")
+            continue
+        planned = int((store.manifest().get("config", {}).get("schedule", {})
+                       or {}).get("rounds", 0))
+        last = max(int(r["round"]) for r in rounds)
+        mode = (store.manifest().get("config", {}) or {}).get("mode", "loop")
+        # Derived, because the reason lives in the RunResult rather than on disk.
+        # An arm that has response files for a round it never recorded was
+        # interrupted part way through that round; one that stopped short with
+        # no such files hit the coded early stop; one that reached its schedule
+        # simply ran out of rounds.
+        interrupted = (path / str(last + 1)).exists()
+        if mode == "one_shot":
+            reason = "one-shot: a single call per island, no rounds"
+        elif interrupted:
+            reason = (f"INTERRUPTED during round {last + 1}; its completed calls are "
+                      "on disk and its admissions are in the archive")
+        elif planned and last < planned:
+            reason = ("early stop: archive top-20 validation IC did not improve for "
+                      "2 consecutive rounds")
+        else:
+            reason = "reached the round limit"
+        curve = " ".join(f"{float(r['validation_top20_ic']):.5f}"
+                         if r.get("validation_top20_ic") is not None else "n/a"
+                         for r in sorted(rounds, key=lambda r: r["round"]))
+        print(f"  {path.name:<18}{last}/{planned or last} rounds  {reason}")
+        print(f"  {'':<18}curve: {curve}")
+
     print("\ntokens and wall clock per arm, from the saved envelopes in each live "
           "run directory\n")
     for path in arm_dirs:
@@ -478,6 +532,10 @@ def main() -> int:
               f"{totals['output_tokens']:>9,} out  "
               f"{totals['model_wall_clock_minutes']:>8.1f} min in model calls"
               + (f"  ${totals['cost_usd']:.2f}" if totals["cost_usd"] is not None else ""))
+    print("\n  cost_usd is the CLI envelope's list-price equivalent -- what these "
+          "tokens would\n  have cost through the API. These runs went through an "
+          "interactive subscription,\n  so nothing here was billed; the real costs are "
+          "model wall clock and usage limits.")
     print("\n  gp-loop's token and duration figures are synthetic bookkeeping. Its "
           "backend\n  draws from the grammar in process and never calls a model, so "
           "the numbers are\n  what the mock envelope recorded, not work anyone paid "

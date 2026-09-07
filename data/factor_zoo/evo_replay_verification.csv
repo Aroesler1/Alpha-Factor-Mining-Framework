@@ -1,0 +1,7 @@
+arm,identical,archive_members,original_members,replayed_bytes,saved_replies_used,missing_replies,seconds
+gp-loop,True,42,42,53432,74,0,196.3
+opus5-loop,True,72,72,132580,89,0,490.1
+opus5-oneshot,True,76,76,103930,3,0,647.3
+sonnet5-loop,True,93,93,147730,119,1,573.7
+sonnet5-oneshot,True,85,85,123116,3,0,670.9
+sonnet5-scalar,True,96,96,159846,119,0,684.0

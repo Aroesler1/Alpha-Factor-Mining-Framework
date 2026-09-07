@@ -1,0 +1,17 @@
+{
+  "capacity": 12,
+  "rules": [
+    "CS_RANK($operating_margin)/(CS_RANK($dollar_volume)+eps) scored |t| 0.99, essentially at the cheap-screen edge. Worth retrying with a different fundamental numerator or a light transform before dropping the shape.",
+    "($close-TS_MIN($low,w))/(TS_MAX($high,w)-TS_MIN($low,w)+eps) is saturated across window changes alone: w=42 hit rho 0.950 against the w=21 version. This stochastic-style chassis needs a structural change, not just a new window.",
+    "The round's best fitness (7.873) came from RANK($earnings_per_share) times a downside-distance-from-high term, ($low-TS_MAX($high,21))/($close+eps), rather than a close- or high-anchored ratio -- those collided with the archive instead. The low-vs-recent-high anchor is the more productive eps partner right now.",
+    "The TS_MEAN(($close-$low)/(X+eps),10) sweep over denominator field X produced 2 of the round's 3 within-run duplicate rejects (X=TS_STD($close,126) and X=LOG($dollar_volume) each resubmitted). Dedupe candidate X's before submitting a sweep like this.",
+    "TS_MEAN(($open-$low)/denom, 10) is dead for every denominator tried this round (TS_RANK($dollar_volume,5), TS_STD($open,21), CS_RANK($dollar_volume)) \u2014 1 archive_subtree + 2 cheap_screen fails (|t| 0.05-0.36). Drop this chassis.",
+    "Swapping only $open<->$close inside an already-archived ratio still trips archive_subtree (2 rejects this round) \u2014 vary the operator or window too, not just the OHLC field.",
+    "$earnings_per_share and $roe*$book_per_share collapse together (rho 0.81-0.89) once either is paired with any close/high/low term \u2014 3 of 4 correlation rejects this round were this pair. Don't recombine both expecting decorrelation.",
+    "COUNT(CS_RANK(field) > 0.8, w) works for $dollar_volume (accepted 2.901, w=63) but is dead for $high-$low range (|t| 0.01, w=21) \u2014 the shape is field-specific, not a generic template.",
+    "TS_CORR($return, $volume, w) stays dead (|t| 0.15) even nested inside a fundamental CS_RANK product (book_per_share partner) \u2014 a fundamental leg can't rescue a dead return/volume kernel.",
+    "TS_RANK($dollar_volume, 252) failed coverage (0.874) \u2014 long windows thin dollar_volume the same way they thin fundamental fields, so treat 252-day dollar_volume windows as risky too.",
+    "TS_STD($volume,w)/TS_STD($volume,w') volatility-ratio chassis stays saturated regardless of its CS_RANK partner (operating_margin still hit archive_subtree) \u2014 the ratio structure itself needs to change, not the partner field.",
+    "The round's best accept (6.401, close/price-position over dollar_volume) had no fundamental leg \u2014 pure price/volume shapes aren't exhausted, don't over-rotate onto fundamental combinations just because several also scored well."
+  ]
+}

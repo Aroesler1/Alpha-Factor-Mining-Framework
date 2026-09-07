@@ -1,0 +1,17 @@
+{
+  "capacity": 12,
+  "rules": [
+    "Do not select 2-node archive members such as RANK($roa) as crossover parents. Three attempts all shared only 2 nodes because that is the whole parent; pick parents whose donatable subtree is at least 3 nodes.",
+    "In the range-vs-volume corr, keep the volume leg a rank/level transform and the window near 42: TS_RANK($volume, 10) against $high - $low at 42 was the top accept (4.080), while TS_STD($dollar_volume, 21) at 63 screened at |t| 0.81 and $return against $high - $low at 21 only reached 0.716.",
+    "Mutations that rewrote both sides of a ratio or both legs of a rank spread went 0 for 4 on locality (4 to 6 edits). Change one leg and leave the other's nodes byte-identical; a window plus one leaf is the affordable move.",
+    "Two price kernels are dead ends: the overnight gap $open - DELAY($high, 1) under a rank collides with the Alpha#101 family, and $return autocorrelation TS_CORR($return, DELAY($return, 1), 21) screened at |t| 0.35.",
+    "COUNT is now proven, not speculative: a 21-day count of 1-day-lag up-days used as the cheap leg of a fundamental rank spread took the round's best fitness (4.588), while the same operator with a running-21-day-high threshold over 42 days screened at |t| 0.44. Keep the threshold a simple 1-day lag and the window near 21.",
+    "With a $roe anchor, subtract ranks instead of multiplying. Both rank-difference forms accepted (2.438, 3.177); every CS_DEMEAN(CS_RANK($roe)) * price-or-volume product screened at |t| 0.06-0.50.",
+    "Standalone CS_RANK'd intraday-range ratios are exhausted on this island: six variants (TS_SUM(high-low) denominators, two-window TS_MAX-TS_MIN ratios, TS_MIN differences, high-open vs open-low correlation) screened at |t| 0.42-0.86. A range statistic only paid when it entered as the cheap leg beside a fundamental.",
+    "Return volatility only carries as the cheap leg of a fundamental spread (TS_STD($return, 42) scored 3.177). Standalone volatility ratios and vol-of-vol normalised by their own mean screened at |t| 0.68-0.82; do not propose them alone.",
+    "Re-windowing or re-wrapping one leg of an existing archive kernel is not decorrelation. Five rejects at rho 0.80-0.97 came from swapping TS_MEAN for TS_MIN/TS_MAX, wrapping a leg in TS_DELTA or TS_RANK, doubling a delta window 63 to 126, and swapping RANK for CS_RANK. Change the field or the combinator, not the wrapper.",
+    "The CS_DEMEAN(CS_RANK($roe)) minus CS_RANK(volume-vs-range statistic) family is saturated: it drew both a correlation reject (0.853) and an archive_subtree reject (5 shared nodes) this round. Anchor on $asset_turnover, $operating_margin, or $accrual_gap instead.",
+    "When an expression already contains a fundamental leg, keep every time window at 63 days or under. A 63-day fundamental delta paired with a 126-day TS_RANK of $close landed coverage 0.883, the round's only coverage failure.",
+    "Price/volume-only accepts are archive filler: the four without a fundamental leg scored 0.316-0.956 while the five with one scored 1.758-4.588, and 12 of 20 rejects were fundamental-free expressions failing the cheap screen. Spend proposals on fundamental-crossed shapes unless the price leg introduces a genuinely new operator."
+  ]
+}
