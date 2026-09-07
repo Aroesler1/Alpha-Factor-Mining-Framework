@@ -30,7 +30,7 @@ from typing import Sequence
 import numpy as np
 
 from quantaalpha_us.evo import operators as ops
-from quantaalpha_us.evo.archive import Archive, ArchiveEntry, load_archive
+from quantaalpha_us.evo.archive import Archive, ArchiveEntry
 from quantaalpha_us.evo.backends import Backend, BackendReply
 from quantaalpha_us.evo.config import EvoConfig
 from quantaalpha_us.evo.feedback import StructuralContext, candidate_feedback
@@ -198,60 +198,38 @@ class EvolutionRunner:
             state.population = members
 
     def _resume(self) -> int:
-        last = self.store.last_completed_round()
-        self.store.reset_to_round(last)
-        self._salvaged = self.store.salvaged_responses()
-        if self._salvaged and self.verbose:
-            print(f"{len(self._salvaged)} reply/replies salvaged from the interrupted "
-                  "round; they will be reused where the prompt is identical", flush=True)
-        if last <= 0:
-            if self.verbose:
-                print("nothing complete to resume from; starting the run over", flush=True)
-            return 0
-        self.archive = load_archive(self.config, self.store.archive_path)
-        self._seen |= self.store.known_candidate_ids()
-        for entry in self.archive.members():
-            metrics = CandidateMetrics.from_dict(entry.metrics) if entry.metrics else None
-            if metrics is not None:
-                self._metrics[entry.id] = metrics
-            self._seen.add(entry.id)
-        for state in self.states:
-            self.memories[state.name] = ReflectionMemory.load(
-                self.store.memory_path(state.name), self.config.schedule.memory_max_rules
-            )
-            state.population = [Member.from_archive(e) for e in
-                                self.archive.top(self.config.schedule.population)
-                                if e.island == state.name] or [
-                Member.from_archive(e) for e in self.archive.top(self.config.schedule.elite)
-            ]
-        if not any(s.population for s in self.states):
-            self._seed_islands()
-        self._rebuild_archive_ranks()
-        if self.verbose:
-            print(f"resuming after round {last}: archive {len(self.archive)}, "
-                  f"{self.archive.niches_filled()} niches filled", flush=True)
-        return last
+        """Replay every saved reply from round 1, then continue live.
 
-    def _rebuild_archive_ranks(self) -> None:
-        """Re-evaluate archive members so the correlation gate has something to compare.
+        The obvious way to resume -- reload the archive and restart at the next
+        round -- rebuilds each island's working population from the archive
+        alone, and that is lossy. A population also holds candidates that were
+        scored but not admitted, plus the previous round's elites, and neither
+        is in the archive. The rebuilt population is therefore NOT the one the
+        interrupted run had, so the prompts it produces differ, so the saved
+        replies no longer match by hash, so every call in the interrupted round
+        gets bought again.
 
-        The rank matrices are the one piece of run state that is not on disk --
-        they are hundreds of megabytes and they are derived -- so a resumed run
-        recomputes them. Skipping this would leave the correlation gate passing
-        everything for the rest of the run, which is a silent loss of a gate
-        rather than a crash.
+        Replaying instead costs CPU and nothing else: scoring is deterministic,
+        so re-running the completed rounds against their saved replies
+        reconstructs the exact in-memory state, and only the calls that are
+        genuinely missing or errored reach the model. On the run this was
+        written for that is the difference between 4 Sonnet calls and 15.
+
+        Every response file is moved to the salvage area first, so the live
+        response directory is rebuilt with exactly one record per call and
+        replay verification still holds afterwards.
         """
-        for entry in self.archive.members():
-            if entry.id in self.archive.ranks:
-                continue
-            try:
-                signal = self.scorer.evaluate(entry.expression)
-            except ExpressionError:
-                continue
-            self.archive.ranks[entry.id] = self.scorer.ranked_fit(signal)
-            metrics = self._metrics.get(entry.id)
-            sign = metrics.sign if metrics is not None else 1
-            self._validation_ic[entry.id] = self.scorer.validation_mean_ic(signal, sign)
+        completed = self.store.last_completed_round()
+        self.store.reset_to_round(0)
+        self._salvaged = self.store.salvaged_responses()
+        if self.verbose:
+            if self._salvaged:
+                print(f"resuming: {len(self._salvaged)} saved repl(y/ies) from "
+                      f"{completed} completed round(s) will be replayed by prompt hash; "
+                      "only missing or errored calls reach the model", flush=True)
+            else:
+                print("nothing saved to resume from; starting the run over", flush=True)
+        return 0
 
     # ---- scoring one proposal -------------------------------------------
 

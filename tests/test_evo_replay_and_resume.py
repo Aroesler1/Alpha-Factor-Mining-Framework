@@ -226,3 +226,29 @@ def test_a_salvaged_reply_is_only_reused_for_an_identical_prompt(tmp_path, bars,
     result = resumed.run(resume=True)
     assert resumed.reused_calls == 0, "a reply was reused for a prompt it did not answer"
     assert len(result.rounds) == config.schedule.rounds
+
+
+def test_resuming_a_fully_saved_run_makes_no_model_calls_at_all(tmp_path, bars, alphas):
+    """The property the whole salvage design rests on. If every reply is on
+    disk, resuming must cost CPU and nothing else -- a single re-bought call
+    here means the resumed run built a different prompt, which means its state
+    diverged from the run it claims to be continuing."""
+    config = make_config()
+    store = RunStore(tmp_path / "full")
+    first = EvolutionRunner(config, PanelScorer(bars, config),
+                            MockBackend(seed=3, seed_expressions=(PLANTED_EXPRESSION,)),
+                            store, alpha101=alphas, verbose=False)
+    original = first.run().archive.snapshot()
+
+    class NeverCall(MockBackend):
+        def call(self, request):
+            raise AssertionError(
+                f"resume re-bought {request.operator}/{request.island} in round "
+                f"{request.round}; its prompt did not match the saved one"
+            )
+
+    resumed = EvolutionRunner(config, PanelScorer(bars, config), NeverCall(seed=3),
+                              store, alpha101=alphas, verbose=False)
+    result = resumed.run(resume=True)
+    assert resumed.reused_calls > 0
+    assert result.archive.snapshot() == original, "resume did not reproduce the archive"
