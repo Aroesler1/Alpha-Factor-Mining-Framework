@@ -169,12 +169,22 @@ directly about this failure mode.
 
 ## Does the LLM add anything?
 
-**No. On this repo's data, the LLM-generated factor sets do not beat expressions
-drawn at random from the same grammar, and both are beaten by a 2015 published
-factor set.** The strongest Sonnet candidate scores |t| = 11.64 in sample; five
-seeds of random expression-generation, matched for candidate count and
-structure, produce best |t| between 9.11 and 12.41. Sonnet sits inside that
-range. Fable, at 9.82, sits below its median.
+**One-shot, no. Inside an evolutionary loop, yes -- but only against the
+genetic-programming control, only for one of the two models, and only just.**
+
+For one-shot prompting the original answer stands. The strongest Sonnet
+candidate scores |t| = 11.64 in sample; five seeds of random
+expression-generation, matched for candidate count and structure, produce best
+|t| between 9.11 and 12.41. Sonnet sits inside that range. Fable, at 9.82, sits
+below its median.
+
+What is new is the loop the literature actually reports gains from, run with a
+control that isolates it. On the 2018-2025 holdout the top 20 of `sonnet5-loop`
+combined equal-weight reaches IC 0.01170 (NW t = 3.73) against 0.00698 for the
+identical loop driven by random grammar draws -- a gap of +0.00472 at p = 0.047,
+the only one of five paired comparisons that clears 5%. Loop against one-shot
+does not clear it for either model. See
+[Does the loop help, and is it the loop or the model](#does-the-loop-help-and-is-it-the-loop-or-the-model).
 
 Reproduce the whole table with one command:
 
@@ -245,19 +255,26 @@ it is not beating a decade-old reference.
 
 ### The memorization test
 
-For every LLM candidate, its highest correlation to any of the 50 transcribed
+For every scorable LLM candidate, its highest correlation to any of the 50
+transcribed
 Alpha101 signals, computed on the same panel through the same evaluator. The
 statistic is the **mean over days of the per-day cross-sectional rank
 correlation** — the same within-day quantity the IC itself measures:
 
-| set | candidates | max corr | median corr | share > 0.9 |
+| set | scorable | max corr | median corr | share > 0.9 |
 |---|---:|---:|---:|---:|
 | Claude Fable 5 | 20 | 0.878 | 0.416 | **0%** |
 | Claude Sonnet 5 | 53 | 0.950 | 0.412 | **4%** (2 of 53) |
 
 A pooled correlation over all date-symbol pairs is reported alongside it in
-`memorization_test.csv`. The two never differ by more than 0.011 here, so
-nothing below turns on the choice.
+`memorization_test.csv`. The two never differ by more than 0.012 here (one
+Sonnet candidate reaches 0.0110; every other pair is within 0.0036), so nothing
+below turns on the choice.
+
+The column is headed *scorable*, not *candidates*: Sonnet proposed 54 and 53
+produced a usable signal, and the memorization statistics are over the 53. The
+share above 0.9 is 2/53 = 3.8%, which is the denominator the committed pipeline
+uses.
 
 Outright restatement is rare, and that is the more interesting result: the LLM
 is mostly *not* reciting Alpha101, it is producing genuinely different
@@ -432,8 +449,15 @@ published set and the null, closer to the null.
 Compustat fundamentals change on the report date and then sit still. A factor
 built on `$roa` takes one new value per firm per quarter, but the daily IC
 series scores it on every trading day, so the same observation is counted about
-63 times. The mean IC is unaffected; the t-statistic is not, because it divides
-by the square root of an n that counts repeats.
+63 times. It is tempting to say the mean IC is unaffected and only the
+t-statistic suffers, and that is wrong on both counts. The daily observations
+are not literal repeats -- the fundamental is frozen but forward returns are new
+every day, so each daily IC is a genuine cross-section -- yet they share a
+signal, so they are heavily dependent and the t-statistic divides by the root of
+an n that counts dependent draws. And the mean moves too: the median quarterly
+IC retention is **-0.32**, and **8 of the 12 factors change sign** between the
+daily average and the quarter-end dates. The daily figure is dominated by dates
+that are not quarter ends, where the fundamental is stalest.
 
 Re-scored on one IC date per quarter, which is the coarsest grid on which
 consecutive observations carry new fundamental information:
@@ -458,8 +482,10 @@ and last trading day of each quarter: median \|t\| of 0.52, 0.33 and 0.41, with
 
 ## Did Alpha101 decay after publication
 
-Kakushadze posted "101 Formulaic Alphas" (arXiv:1601.00991) on 2015-12-31, which
-gives a pre/post split that needs no judgement call. The 50 transcribed formulas
+Kakushadze circulated "101 Formulaic Alphas" on SSRN (abstract 2701346) on
+2015-12-09; the arXiv version (arXiv:1601.00991) followed on 2016-01-05. A cut
+at 2015 year end therefore sits just after first circulation and just before the
+arXiv posting, which gives a pre/post split that needs no judgement call. The 50 transcribed formulas
 are scored on 2000-01 to 2015-12, each one's sign is frozen there, and the same
 expressions are scored on 2016-01 to 2025-12. The model's own factors and the
 random-grammar draws run through the identical split as controls; neither has a
@@ -774,13 +800,119 @@ be measuring the gate rather than the proposer.
 ### Reproducibility
 
 Every raw response is written to
-`runs/<arm>/<round>/<island>/<operator>.jsonl` **before** it is parsed, so a
-parse error cannot destroy a paid call. `--resume` restarts from the last
-completed round after discarding any partial one. `--replay` re-derives the
-whole run from saved responses with zero model calls, and a test asserts the
-replayed archive matches byte for byte. `--dry-run` prints the exact command
-lines and the token estimate before anything is spent. With the mock backend and
-a fixed seed, two runs produce identical archives.
+`data/evo_runs/<arm>/<round>/<island>/<operator>.jsonl` **before** it is parsed,
+so a parse error cannot destroy a call that has already been made.
+
+`--resume` replays from round 1 against the saved replies rather than reloading
+the archive and restarting at the next round. The obvious approach is lossy: an
+island's working population also holds candidates that were scored but never
+admitted, plus the previous round's elites, and neither is in the archive, so
+the rebuilt population produces different prompts and the saved replies stop
+matching. Replaying costs CPU and nothing else, because scoring is
+deterministic. Only calls that are genuinely missing or errored reach the model.
+
+`--replay` re-derives a whole run from saved responses with zero model calls.
+This is not just asserted on a fixture: `scripts/sp500_evo_verify_replay.py`
+replays **all six arms** from their own saved responses in one process, and
+**all six archives come back byte for byte identical** -- 42, 72, 76, 93, 85 and
+96 members respectively. Those counts include the three island seeds each arm
+starts from; the per-arm tables elsewhere in this README report *discovered*
+factors, which is 39, 69, 74, 90, 82 and 94. The verification table is committed at
+`data/factor_zoo/evo_replay_verification.csv`.
+
+`--dry-run` prints the exact command lines and the token estimate before
+anything is spent. With the mock backend and a fixed seed, two runs produce
+identical archives.
+
+## Does the loop help, and is it the loop or the model
+
+Six arms, identical gates, fitness, archive rules, islands and windows; only the
+proposal step differs. Each arm's top 20 combined equal-weight and scored once
+on the 2018-2025 holdout:
+
+| arm | archive | niches | equal-weight holdout IC | NW t | ridge IC | ridge t |
+|---|---:|---:|---:|---:|---:|---:|
+| **sonnet5-loop** | 90 | 14/18 | **0.01170** | 3.73 | 0.00721 | 2.14 |
+| alpha101 (published) | 24 | 6/18 | 0.00945 | 3.12 | 0.00978 | 2.89 |
+| opus5-loop | 69 | 12/18 | 0.00928 | 3.56 | 0.00461 | 1.58 |
+| sonnet5-oneshot | 82 | 15/18 | 0.00924 | 3.09 | 0.00362 | 1.11 |
+| sonnet5-scalar (feedback ablation) | 94 | 15/18 | 0.00889 | 3.92 | -0.00008 | -0.02 |
+| opus5-oneshot | 74 | 15/18 | 0.00779 | 2.98 | 0.00985 | 2.60 |
+| gp-loop (control) | 39 | 14/18 | 0.00698 | 3.09 | -0.00572 | -2.00 |
+| random grammar | 48 | 6/18 | 0.00552 | 1.94 | 0.00338 | 0.96 |
+
+Paired block bootstrap, 2,000 draws, block 21, resampling the same date blocks
+for both arms so the comparison is on shared days:
+
+| comparison | difference | 95% CI | p |
+|---|---:|---:|---:|
+| sonnet5: loop vs GP loop | +0.00472 | [-0.00011, +0.00922] | **0.047** |
+| sonnet5: full vs scalar feedback | +0.00281 | [-0.00096, +0.00632] | 0.122 |
+| sonnet5: loop vs one-shot | +0.00247 | [-0.00349, +0.00806] | 0.399 |
+| opus5: loop vs GP loop | +0.00230 | [-0.00087, +0.00536] | 0.152 |
+| opus5: loop vs one-shot | +0.00149 | [-0.00405, +0.00694] | 0.582 |
+
+**One comparison of five clears 5%, and it is the one that isolates the model.**
+Sonnet's loop beats the identical loop driven by random grammar draws at
+p = 0.047, on a confidence interval whose lower end still touches zero. Opus's
+does not (p = 0.152).
+
+**The comparison the exercise was built to make fails.** Loop against one-shot
+is p = 0.399 for Sonnet and p = 0.582 for Opus. On this evidence, iterating with
+feedback does not beat asking once. The feedback ablation points the right way
+(+0.00281, full beats scalar) but does not clear significance either -- which is
+roughly what ReEvo's own low-single-digit ablation predicts at this sample size.
+
+Two results carry more than the p-values do.
+
+**The GP control's ridge combination is negative**: -0.00572 at t = -2.00, while
+its equal-weight combination is positive. Weights fitted on the fit window
+invert out of sample. That is what fitting weights on noise looks like, and the
+same ridge procedure helps Alpha101 (0.00978) and Opus one-shot (0.00985). It is
+the sharpest single piece of evidence that the GP archive is fitted noise rather
+than weak signal.
+
+**Random grammar through the same archive rules is the only arm whose combined
+signal fails NW t > 2** (1.94). The pipeline is not blessing whatever is fed to
+it.
+
+Alpha101 remains the set to beat on nearly every axis: 20/20 sign held, the
+fastest signals (median half-life 3.3 days against 8 to 21 days for the arms),
+and the most reliable ridge combination -- ridge NW t = 2.89, the highest of any
+arm, though `opus5-oneshot` edges it on ridge IC itself (0.00985 against
+0.00978). Only `sonnet5-loop` exceeds it on equal-weight
+holdout IC, and it needs 90 factors to Alpha101's 24.
+
+### What the arms cost, and the one that did not finish
+
+| arm | rounds | calls | output tokens | model minutes |
+|---|---|---:|---:|---:|
+| gp-loop | 5/8, early stop | 74 | 4,736 | 0 |
+| opus5-loop | 6/8, early stop | 89 | 4,527,840 | 912 |
+| opus5-oneshot | 1, one-shot | 3 | 380,382 | 67 |
+| sonnet5-loop | 7/8, interrupted | 118 | 11,569,274 | 2,417 |
+| sonnet5-oneshot | 1, one-shot | 3 | 661,657 | 126 |
+| sonnet5-scalar | 8/8, completed | 119 | 11,071,490 | 2,104 |
+
+`gp-loop`'s token figures are synthetic bookkeeping: it draws from the grammar
+in process and never calls a model.
+
+`sonnet5-loop` was interrupted during round 8 by three consecutive DNS failures
+in one island, after the other two islands had completed all five of their
+calls. Its seven complete rounds, and the admissions its finished round-8 calls
+earned, are in the archive and reproduce byte for byte. Its validation curve had
+already flattened -- 0.00729 at round 6, 0.00721 at round 7 -- so round 8 would
+most likely have triggered the same early stop the other two loop arms hit. **It
+is reported as 7 of 8 rather than quietly presented as complete.**
+
+The `cost_usd` column in `data/factor_zoo/evo_final_table.csv` is the CLI
+envelope's **list-price equivalent**, not a bill. These runs authenticate
+through an interactive Claude subscription, so the real costs are model wall
+clock and usage limits, not dollars.
+
+Reproduce the table with
+`python scripts/sp500_evo_final_table.py` (it is the only script that reads the
+holdout) and the lineage of every top-20 factor is in [docs/lineage.md](docs/lineage.md).
 
 ## Universe
 
