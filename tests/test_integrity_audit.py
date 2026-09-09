@@ -98,13 +98,14 @@ def test_completed_comparisons_reproduce_without_bars():
     assert result.holm_p.min() == pytest.approx(.235)
 
 
-def test_fundamentals_provenance_report_preserves_the_unrecoverable_vintage():
-    report = pd.read_csv("reports/fundamentals_provenance_audit.csv")
-    values = report.set_index("item")["value"].astype(str)
-    assert int(values["local_keys_sampled"]) == 32
-    assert int(values["comp.fundq_exact_matches"]) == 32
-    assert int(values["comp_snapshot.wrds_csq_unrestated_exact_matches"]) == 26
-    assert values["extract_vintage"] == "not recoverable"
+def test_fundamentals_provenance_report_reconstructs_from_sanitized_evidence():
+    from scripts.sp500_fundamentals_provenance import check_artifacts
+
+    rebuilt = check_artifacts()
+    committed = pd.read_csv(
+        "reports/fundamentals_provenance_audit.csv", dtype=str
+    )
+    pd.testing.assert_frame_equal(rebuilt, committed)
 
 
 def test_consumed_historical_entrypoint_refuses_before_price_read(monkeypatch):

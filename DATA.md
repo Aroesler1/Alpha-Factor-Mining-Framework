@@ -42,6 +42,23 @@ CRSP is licensed through the university subscription. Only derived outputs are p
 
 The completed evolutionary artifacts are preserved under `data/evo_runs/` and `data/factor_zoo/`. New `reports/` files contain aggregates, literature comparisons and source hashes only. Their historical values were not rescored on vendor observations. Historical selection labels cross window cutoffs.
 
-An approved 2026-09-08 WRDS fingerprint compared 32 deterministic keys from the local fundamentals parquet. All 32 match current `comp.fundq`, current restated Snapshot, and revisions present in Snapshot PIT; 26 match current unrevised Snapshot. The product family is therefore Compustat North America quarterly fundamentals and the cache is not established as unrevised history. The exact source alias and historical extraction timestamp remain unrecoverable because the parquet has no source or vintage sidecar. The derived evidence is `reports/fundamentals_provenance_audit.csv`; licensed query rows remain outside the repository.
+An approved 2026-09-08 WRDS fingerprint compared 32 deterministic keys from the local fundamentals parquet. All 32 match current `comp.fundq`, current restated Snapshot, and revisions present in Snapshot PIT; 26 match current unrevised Snapshot. The product family is therefore Compustat North America quarterly fundamentals and the cache is not established as unrevised history. The exact source alias and historical extraction timestamp remain unrecoverable because the parquet has no source or vintage sidecar.
+
+The repository commits only deterministic selection positions, per-sample hashes, table match booleans, cached-input hashes, and those explicit limitations. It contains no fundamental values, GVKEYs, sample dates, query text, credentials, or source paths. Rebuild and validate the aggregate report using only that sanitized evidence:
+
+```bash
+python scripts/sp500_fundamentals_provenance.py --check
+```
+
+To derive a fresh sanitized bundle from authorized files already present on local disk, supply an external parquet and an external approved candidate-cache directory. This command is also offline:
+
+```bash
+python scripts/sp500_fundamentals_provenance.py \
+  --local-parquet /external/local-fundamentals.parquet \
+  --candidate-cache /external/approved-cache \
+  --output-dir /tmp/fundamentals-provenance
+```
+
+An approved cache that contains only the previously selected local rows can be processed with `--cached-local-sample` plus `--preserved-report`; the latter preserves the full-file date profile that cannot be recovered from a 32-row cache. Generation never stores the supplied absolute paths. Licensed input rows stay outside the repository, and neither mode reads or rescores the consumed holdout.
 
 WRDS access now refuses to connect unless `WRDS_DUO_READY=1` follows current-session approval. A client attempts at most one connection, without vendor authentication retries; batch queries on that connection and cache results. The audit and test suite need no WRDS login.

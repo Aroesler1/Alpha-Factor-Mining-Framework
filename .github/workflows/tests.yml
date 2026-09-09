@@ -30,3 +30,6 @@ jobs:
 
       - name: Verify published comparison aggregates offline
         run: python scripts/sp500_evo_audit.py --check
+
+      - name: Verify sanitized fundamentals provenance report
+        run: python scripts/sp500_fundamentals_provenance.py --check
