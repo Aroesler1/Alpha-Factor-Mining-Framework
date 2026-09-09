@@ -27,6 +27,7 @@ from quantaalpha_us.factors.expression_evaluator import (
     build_field_panels,
 )
 from quantaalpha_us.factors.expression_sanitizer import ExpressionSanitizer
+from quantaalpha_us.factors.label_clock import labels_known_by
 
 
 @dataclass
@@ -117,16 +118,16 @@ def score_expressions(
     """Sanitize, evaluate, and score expressions. Returns (report, signals).
 
     `ic_dates` restricts which dates contribute to the IC while leaving signal
-    evaluation on the full panel. Every operator here is backward-looking, so
-    computing signals over all history and then scoring a date subset leaks
-    nothing -- and unlike slicing the bars first, it does not blank out the
-    holdout's first 252 days to rolling-window warm-up.
+    evaluation on the full panel. Outcomes must finish by the last selected
+    date. Earlier feature history remains available for rolling-window warm-up.
     """
     sanitizer = sanitizer or ExpressionSanitizer()
     panels = build_field_panels(bars)
     evaluator = ExpressionEvaluator(panels)
     fwd = forward_open_returns(panels)
     if ic_dates is not None:
+        if len(ic_dates):
+            fwd.loc[~labels_known_by(fwd.index, ic_dates.max())] = np.nan
         fwd = fwd.loc[fwd.index.isin(ic_dates)]
 
     report = ResearchReport()

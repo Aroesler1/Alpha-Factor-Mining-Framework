@@ -31,6 +31,9 @@ for _p in (str(US_ROOT), str(US_ROOT.parent)):
 
 from quantaalpha_us.evo.archive import Archive, ArchiveEntry, load_archive  # noqa: E402
 from quantaalpha_us.evo.config import EvoConfig  # noqa: E402
+from quantaalpha_us.evo.evaluation_protocol import (claim_evaluation, input_snapshot,
+                                                   write_exclusive)
+from quantaalpha_us.evo.comparison_audit import adjust_comparisons
 from quantaalpha_us.evo.fitness import GateRunner  # noqa: E402
 from quantaalpha_us.evo.persistence import RunStore, token_totals  # noqa: E402
 from quantaalpha_us.evo.report import (  # noqa: E402
@@ -278,10 +281,50 @@ def main() -> int:
     parser.add_argument("--out-dir", default=str(US_ROOT / "data" / "factor_zoo"))
     parser.add_argument("--draws", type=int, default=2000)
     parser.add_argument("--arms", nargs="*", default=None)
+    parser.add_argument("--freeze-evaluation", action="store_true",
+                        help="freeze input hashes/settings without scoring; review this manifest before evaluation")
     args = parser.parse_args()
 
     started = time.time()
     config = EvoConfig(arm="final")
+    runs_dir = Path(args.runs_dir)
+    consumed = runs_dir / "_evaluation_consumed.json"
+    if consumed.exists():
+        raise SystemExit("This holdout is already consumed. Run scripts/sp500_evo_audit.py --check instead.")
+    arm_paths = [p for p in sorted(runs_dir.iterdir()) if p.is_dir()
+                 and not p.name.endswith("-raw") and not p.name.startswith("_")
+                 and (p / "archive.jsonl").exists()]
+    if not arm_paths:
+        raise SystemExit("No completed arms to freeze")
+    for path in arm_paths:
+        saved = RunStore(path).manifest().get("config", {})
+        if saved.get("label_policy") != config.label_policy:
+            raise SystemExit("Historical archives used unpurged labels. Preserve their published tables; do not relabel a rescore as clean.")
+    files = {"bars": Path(args.bars), "membership": Path(args.membership)}
+    for path in arm_paths:
+        for item in path.rglob("*"):
+            if item.is_file():
+                files["runs/" + str(item.relative_to(runs_dir))] = item
+    for folder in (US_ROOT / "quantaalpha_us", US_ROOT / "scripts", US_ROOT / "configs"):
+        for item in folder.rglob("*"):
+            if item.is_file() and item.suffix in {".py", ".json", ".txt"}:
+                files[str(item.relative_to(US_ROOT))] = item
+    for item in Path(args.zoo_dir).rglob("*"):
+        if item.is_file() and ("cache" in item.parts or item.name == "pool.csv"):
+            files["zoo/" + str(item.relative_to(args.zoo_dir))] = item
+    snapshot = input_snapshot(files, {"config": config.to_dict(), "draws": args.draws,
+                                     "arms": args.arms, "top_n": TOP_N,
+                                     "ridge_grid": list(RIDGE_GRID)})
+    manifest = runs_dir / "_evaluation_manifest.json"
+    if args.freeze_evaluation:
+        write_exclusive(manifest, snapshot)
+        print("Evaluation manifest frozen. No outcome was scored. Review it before proceeding.")
+        return 0
+    if Path(args.out_dir).resolve() == Path(args.zoo_dir).resolve():
+        raise SystemExit("Use a separate new output directory; historical evidence must not be overwritten.")
+    if Path(args.out_dir).exists():
+        raise SystemExit("Evaluation output directory must not already exist")
+    claim_evaluation(manifest, consumed, snapshot)
     bars = apply_membership_filter(pd.read_parquet(args.bars), args.membership)
     scorer = PanelScorer(bars, config, memoize=True)
     alphas = alpha101.load()
@@ -432,6 +475,9 @@ def main() -> int:
     comparison_table = pd.DataFrame(comparisons)
     if not comparison_table.empty:
         comparison_table.to_csv(out_dir / "evo_paired_bootstrap.csv", index=False)
+        adjusted = adjust_comparisons(comparison_table)
+        adjusted["evidence_status"] = "purged_labels_conditional_on_frozen_search"
+        adjusted.to_csv(out_dir / "evo_comparison_audit.csv", index=False)
 
     # ---- lineage ---------------------------------------------------------
     lineage = ["# Lineage of every top-20 factor\n",

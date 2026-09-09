@@ -37,3 +37,9 @@ python scripts/sp500_score_mined_factors.py --bars data/us_equities/processed/da
 ## Licence and retention
 
 CRSP is licensed through the university subscription. Only derived outputs are published. Raw extracts are deleted at the end of the associated academic affiliation.
+
+## Integrity audit and authorized access
+
+The completed evolutionary artifacts are preserved under `data/evo_runs/` and `data/factor_zoo/`. New `reports/` files contain aggregates, literature comparisons and source hashes only. Their historical values were not rescored on vendor observations. Historical selection labels cross window cutoffs, and the actual fundamentals cache has not been verified as unrevised Snapshot history. Report-date alignment does not establish that vintage.
+
+WRDS access now refuses to connect unless `WRDS_DUO_READY=1` follows current-session approval. A client attempts at most one connection, without vendor authentication retries; batch queries on that connection and cache results. The audit and test suite need no WRDS login.

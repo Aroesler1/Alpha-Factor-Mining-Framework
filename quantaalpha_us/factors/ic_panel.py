@@ -42,6 +42,7 @@ from quantaalpha_us.factors.expression_evaluator import (
 )
 from quantaalpha_us.factors.expression_sanitizer import ExpressionSanitizer
 from quantaalpha_us.factors.factor_research import _daily_spearman_ic
+from quantaalpha_us.factors.label_clock import labels_known_by
 
 # The horizon grid the IC-decay curve is measured on.
 HORIZONS: tuple[int, ...] = (1, 5, 10, 21, 63)
@@ -193,13 +194,17 @@ class ICTable:
 
     def window(self, start: str | None, end: str | None, horizon: int = 1,
                kind: str = LAGGED) -> pd.DataFrame:
-        """The (dates x factors) IC frame restricted to a date window."""
+        """Restrict signal dates and conservatively purge labels beyond end.
+
+        A cached IC calendar may omit price sessions. Counting h+1 rows on
+        that calendar can over-purge, but cannot admit a later outcome.
+        """
         frame = self.ic[(kind, horizon)]
         idx = frame.index
         if start is not None:
             idx = idx[idx >= pd.Timestamp(start)]
         if end is not None:
-            idx = idx[idx <= pd.Timestamp(end)]
+            idx = idx.intersection(frame.index[labels_known_by(frame.index, end, horizon)])
         return frame.loc[idx]
 
     def complete_case(self, expressions: Sequence[str], start: str | None = None,

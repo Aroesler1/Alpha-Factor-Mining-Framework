@@ -1,0 +1,4 @@
+metric,value
+median_abs_iid_over_hac,1.0339870269282498
+median_quarter_t_over_daily_iid_t,0.10522323274342721
+sqrt_sample_size_reference,0.12609940551275955

@@ -28,9 +28,9 @@ CALIBRATION_PATH = REPO_ROOT / "configs" / "evo_calibration.json"
 class Windows:
     """The three date windows, and the one the model is allowed to learn from.
 
-    The model sees the fit window and nothing else. Validation exists for
-    exactly two purposes -- the early-stop rule and the two threshold choices --
-    and the holdout is read once, by one script, at the end.
+    Prompt scores use the fit window. Validation supplies early stopping,
+    threshold choices and the historical final portfolio's ridge penalty.
+    The final evaluator guards consumption of the holdout.
     """
 
     fit_start: str = "2000-01-01"
@@ -268,6 +268,7 @@ class EvoConfig:
     # "full" is the B7 feedback block. "scalar" reduces it to the fitness number
     # and nothing else, which is the feedback ablation arm.
     feedback_mode: str = "full"
+    label_policy: str = "outcome-end-v1"
     windows: Windows = field(default_factory=Windows)
     gates: Gates = field(default_factory=Gates.load)
     fitness: FitnessWeights = field(default_factory=FitnessWeights)
@@ -324,6 +325,7 @@ class EvoConfig:
         return {
             "arm": self.arm, "model": self.model, "effort": self.effort, "seed": self.seed,
             "mode": self.mode, "feedback_mode": self.feedback_mode,
+            "label_policy": self.label_policy,
             "windows": self.windows.__dict__,
             "gates": self.gates.__dict__,
             "fitness": self.fitness.__dict__,

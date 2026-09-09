@@ -1,0 +1,3 @@
+version,date,csi300_ic,annual_return_pct,max_drawdown_pct,sp500_cumulative_excess_return_pct,source
+v1,2026-02-06,0.1501,27.75,7.98,137,https://arxiv.org/abs/2602.07085v1
+v3,2026-05-18,0.0472,4.68,11.8,19.1,https://arxiv.org/html/2602.07085v3

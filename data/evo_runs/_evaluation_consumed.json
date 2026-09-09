@@ -1,0 +1,25 @@
+{
+  "files": {
+    "evo_combined_table.csv": "c1981baa0994442cadf60b56d8d1eaf08dab2d7edd22620723d057c76bce5e64",
+    "evo_final_table.csv": "fd87ad03e08601351712db1bef6383a1f860ccd92c94b1fdd032494d8acaa393",
+    "evo_paired_bootstrap.csv": "354365af8a77e37f43ad2f7f47d578c2b49decbeb7d33ef7fe94933384659b73",
+    "evo_replay_verification.csv": "45197e4e984f9b313f43aafa5d3fe6400a063be39ca29c144f8c73b1204e4bd1",
+    "evo_threshold_sweep.csv": "cd99b1c2f67dc066b39ac033f192c4a45abc2b9dd64abd077cdb84db1c2af5a0",
+    "evo_top20_detail.csv": "71ab37afbcbc05bf95022521c23e0ef9b22b83a2e07dfb8100365831c4bb701e"
+  },
+  "label_policy": "historical_signal_date_only",
+  "limitations": [
+    "Selection labels can extend beyond cutoffs",
+    "Record created retrospectively; original first-access timestamp not established",
+    "Ridge penalty also selected on validation",
+    "No new holdout evaluation occurred in this audit"
+  ],
+  "schema": 1,
+  "source_revision": "6bc4939",
+  "status": "historical_holdout_already_consumed",
+  "windows": {
+    "fit": "2000-2013",
+    "holdout": "2018-2025",
+    "validation": "2014-2017"
+  }
+}

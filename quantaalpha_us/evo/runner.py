@@ -646,6 +646,12 @@ class EvolutionRunner:
 
     def run(self, *, resume: bool = False) -> RunResult:
         started = time.time()
+        saved = self.store.manifest()
+        if saved:
+            if saved.get("config", {}).get("label_policy") != self.config.label_policy:
+                raise ValueError("Saved run uses a different label policy. Preserve it; start a new experiment directory.")
+            if not resume:
+                raise ValueError("Run directory already has a manifest; use resume or a new directory.")
         self.store.write_manifest({
             "config": self.config.to_dict(),
             "backend": getattr(self.backend, "name", "unknown"),

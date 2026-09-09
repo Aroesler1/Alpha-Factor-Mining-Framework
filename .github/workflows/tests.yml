@@ -2,7 +2,7 @@ name: tests
 
 on:
   push:
-    branches: [main]
+    branches: [main, "review/**"]
   pull_request:
   workflow_dispatch:
 
@@ -27,3 +27,6 @@ jobs:
       # a secret was configured.
       - name: Run tests
         run: python -m pytest tests -q
+
+      - name: Verify published comparison aggregates offline
+        run: python scripts/sp500_evo_audit.py --check

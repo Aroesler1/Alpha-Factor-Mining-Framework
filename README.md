@@ -1,32 +1,38 @@
 # LLMStrat
 
+**Research scope:** point-in-time S&P 500 selection on the cached 2000-2025 US panel. The completed evolutionary experiment fitted on 2000-2013, used 2014-2017 for validation, and reported 2018-2025. Its historical selection labels cross window boundaries; these archived results are not clean out-of-sample confirmation. New scoring code purges labels by outcome end date. No model was called and no historical holdout was rescored for this repair.
+
+**Completed-run audit:** Sonnet's loop has higher historical equal-weight IC than the GP loop, but none of the five reported paired comparisons survives Holm correction. The smallest raw p-value, 0.047, becomes 0.235. Loop versus one-shot is not established for either model. Sonnet's loop stopped during its last round, and the saved partial-round admissions remain in the historical record.
+
+```bash
+python scripts/sp500_evo_audit.py --check
+```
+
+This offline command verifies the five published IC differences and [adjusted comparison table](reports/evo_comparison_audit.csv), using committed aggregates only. The underlying bootstrap p-values and confidence intervals are historical inputs, not independently rebuilt from daily IC paths. Holm covers these five contrasts, not every earlier search choice. See [integrity and completion notes](docs/integrity_audit.md).
+
 LLMStrat is a US equities research and execution stack for daily S&P 500 alpha mining. It builds a point-in-time universe, maintains market data, evaluates candidate signals with walk-forward controls, and can route approved portfolios into Alpaca paper or live trading with explicit risk checks.
 
 ## Provenance
 
-This project descends from **QuantaAlpha** — [QuantaAlpha/QuantaAlpha](https://github.com/QuantaAlpha/QuantaAlpha), MIT License, paper: *QuantaAlpha: An Evolutionary Framework for LLM-Driven Alpha Mining* ([arXiv:2602.07085](https://arxiv.org/abs/2602.07085)). QuantaAlpha targets the China A-share market; this is a rewrite for US equities.
+This project descends from **QuantaAlpha** ;  [QuantaAlpha/QuantaAlpha](https://github.com/QuantaAlpha/QuantaAlpha), MIT License, paper: *QuantaAlpha: An Evolutionary Framework for LLM-Driven Alpha Mining* ([arXiv:2602.07085](https://arxiv.org/abs/2602.07085)). QuantaAlpha targets the China A-share market; this is a rewrite for US equities.
 
 **Kept from QuantaAlpha:**
 
-- The **staged research pipeline** concept: ideate, express, sanitise, evaluate, gate — with the LLM confined to the ideation stage and every stage after it mechanical and auditable.
+- The **staged research pipeline** concept: ideate, express, sanitise, evaluate, gate ;  with the LLM confined to the ideation stage and every stage after it mechanical and auditable.
 - The **formulaic-alpha DSL** as the LLM's output contract, rather than free-form generated code. 22 of this repo's 32 operator names (`TS_MEAN`, `RANK`, `DELAY`, `TS_CORR`, `ZSCORE`, …) also appear in upstream's function library, though most are the common Alpha101/Qlib vocabulary predating both projects.
 - The **LLM-ideation framing**: a frontier model is a hypothesis generator whose output is worthless until it survives an evaluation harness it cannot influence.
 
 **Rebuilt here, with no upstream counterpart:** the data layer (CRSP via WRDS, replacing Qlib/A-share); the point-in-time S&P 500 membership filter joined on PERMNO rather than ticker; rank-space deduplication of candidate signals; the out-of-sample holdout with frozen in-sample sign; the sanitizer's identifier and arity checks; the Claude Code LLM backend; and the append-only, content-addressed experiment trace.
 
-**Not carried over:** upstream's evolutionary search itself — the trajectory-level mutation and crossover operators that are the paper's actual contribution. This repo does single-shot ideation plus selection. It inherits QuantaAlpha's scaffolding, not its algorithm.
+**Search implementation:** the original study used single-shot ideation. The completed Part C adds this repository's own evolutionary loop, with typed formula edits, archive selection and GP controls. It is not a code-level reproduction of upstream's trajectory search.
 
 At the code level the two share nothing: a file-by-file comparison of all 27 modules in `quantaalpha_us/` against all 159 upstream modules found no file above 0.17 similarity, and the four files that share a basename with an upstream file share only imports and `@dataclass` decorators. The full table, the method, and its caveats are in **[docs/PROVENANCE.md](docs/PROVENANCE.md)**.
 
 ### On comparing IC against the paper
 
-Upstream's headline result is an **IC of 0.1501 on CSI 300** (GPT-5.2 backbone, ARR 27.75%, MDD 7.98%). This repo measures mean ICs of **0.003–0.011** on the S&P 500. Those numbers are not comparable, and the gap should not be read as either a validation or a failure of this port:
+Upstream v1 reported CSI 300 IC 0.1501, ARR 27.75% and MDD 7.98%. Its [v3 dated 2026-05-18](https://arxiv.org/html/2602.07085v3) reports IC 0.0472, ARR 4.68% and MDD 11.8%; S&P 500 transfer cumulative excess return changes from about 137% to 19.1%. These versioned literature values are recorded in [reports/literature_versions.csv](reports/literature_versions.csv).
 
-- **Different market.** Upstream's headline is CSI 300. US large-cap is the most heavily arbitraged equity universe in the world; daily cross-sectional ICs there are structurally smaller than in A-shares.
-- **The paper reports no US IC.** QuantaAlpha does test zero-shot transfer of CSI-300-mined factors onto the S&P 500, and reports it as successful — roughly 137% cumulative excess return over the 2022–2025 test window (Figure 1). But that is a portfolio-level cumulative excess return under a TopkDropout strategy with China-calibrated transaction costs, not an information coefficient. There is no published upstream S&P 500 IC to benchmark against.
-- **Different search.** The evolutionary mutation/crossover loop that produces upstream's headline number is not implemented here.
-
-The honest statement is the one already made under [Known limits](#known-limits): ICs of 0.003–0.011 are weak against the 0.02–0.05 of a decent published factor, and the large t-statistics sit below the noise floor of a search this size — random expressions from the same grammar reach 9 to 12. Factor quality, not tooling, is this repo's binding constraint.
+Different universes, costs, IC conventions and search procedures prevent a direct performance ranking. There is no universal IC cutoff for a useful factor independent of its horizon, turnover and exposures. The relevant comparisons here are the published and random controls under the same local protocol.
 
 ### Citation
 
@@ -98,7 +104,7 @@ Typical runs produce:
 The loop from mining to backtest is now closed end to end:
 
 1. **Evaluator** (`quantaalpha_us/factors/expression_evaluator.py`): sanitized expression strings such as `TS_MEAN($close, 21) / (TS_STD($close, 21) + 1e-8)` are parsed with a strict AST whitelist (second guard behind the sanitizer) and evaluated into date x symbol signal panels. All time-series operators use strict windows, so warm-up periods are NaN rather than biased.
-2. **Research scoring** (`quantaalpha_us/factors/factor_research.py` and `scripts/sp500_score_mined_factors.py`): candidates are scored by daily cross-sectional Spearman IC against forward open-to-open returns under the repo's execution convention, with an IC t-statistic across days and a signal-autocorrelation turnover proxy. Selection is greedy by |t-stat| with a pairwise signal-correlation cap, because string-level dedup cannot catch an LLM restating one idea five ways. That cap is applied in **rank space**, matching the rank IC selection ranks on: pooled Pearson on raw values is not invariant to a monotone cross-sectional transform, so `CS_RANK(X)` and `X` — identical orderings, identical IC — measured 0.21 against each other and both entered a set billed as uncorrelated. In rank space that pair is 1.00.
+2. **Research scoring** (`quantaalpha_us/factors/factor_research.py` and `scripts/sp500_score_mined_factors.py`): candidates are scored by daily cross-sectional Spearman IC against forward open-to-open returns under the repo's execution convention, with an IC t-statistic across days and a signal-autocorrelation turnover proxy. Selection is greedy by |t-stat| with a pairwise signal-correlation cap, because string-level dedup cannot catch an LLM restating one idea five ways. That cap is applied in **rank space**, matching the rank IC selection ranks on: pooled Pearson on raw values is not invariant to a monotone cross-sectional transform, so `CS_RANK(X)` and `X` ;  identical orderings, identical IC ;  measured 0.21 against each other and both entered a set billed as uncorrelated. In rank space that pair is 1.00.
 3. **Backtest integration**: `signals.mined_expressions` in the research config feeds selected expressions into `build_features`, where they are cross-sectionally ranked and averaged into the score next to the baseline factors, and the gate-6 stability measurement covers them automatically.
 
 `configs/mined_factors_claude_2026-08.txt` ships a candidate set generated by Claude Fable 5 (Anthropic). These are candidates, not validated factors: every one must clear the IC scoring script on research-grade data and then the walk-forward promotion gates. A unit test guarantees the whole file sanitizes and evaluates.
@@ -107,7 +113,7 @@ The loop from mining to backtest is now closed end to end:
 
 A mining loop that keeps only its winners cannot be audited. The rejected hypotheses are what show whether a search was disciplined or simply ran until something passed, and they are exactly what a leaderboard discards.
 
-`quantaalpha_us/factors/experiment_trace.py` records every hypothesis considered — the expression, the reasoning that produced it, the scores it earned, and the verdict, failures included. It follows the auditable-trace design argued for in [arXiv 2604.26747](https://arxiv.org/abs/2604.26747), with two properties that make it evidence rather than decoration:
+`quantaalpha_us/factors/experiment_trace.py` records every hypothesis considered ;  the expression, the reasoning that produced it, the scores it earned, and the verdict, failures included. It follows the auditable-trace design argued for in [arXiv 2604.26747](https://arxiv.org/abs/2604.26747), with two properties that make it evidence rather than decoration:
 
 - **Append-only.** Records are JSON Lines, flushed and fsynced on write, never rewritten. There is no update or delete operation, because a trace that can be edited afterwards proves nothing about what was tried.
 - **Content-addressed.** Each record carries a hash of the normalised expression, so the same idea proposed twice is detected across runs even when spelled differently. That is what lets the trace act as search memory rather than a log.
@@ -119,7 +125,7 @@ verdicts: {'selected': 10, 'rejected_correlated': 1, 'rejected_score': 1, 'disti
 distinct hypotheses ever tried: 12 (use this as the DSR trial count, not 10)
 ```
 
-A Deflated Sharpe computed against the survivors understates the search by exactly the number of rejections. Computed against the trace, it reflects what was actually tried — and across many runs the trace accumulates, so the denominator keeps growing the way an honest one should.
+A Deflated Sharpe computed against the survivors understates the search by exactly the number of rejections. Computed against the trace, it reflects what was actually tried ;  and across many runs the trace accumulates, so the denominator keeps growing the way an honest one should.
 
 ```bash
 python scripts/sp500_score_mined_factors.py --bars <panel> --trace data/trace.jsonl
@@ -152,25 +158,13 @@ rolling-window warm-up.
 
 ### This holdout is not a post-cutoff test
 
-The panel ends **2025-12-31**, and every candidate set here was written by a
-model trained on data running through 2025 and beyond. The 2018-2025 holdout is
-therefore *inside* the generating model's training window. It is out of sample
-for the selection step and in sample for the model that proposed the
-expressions, which is a weaker claim than "out of sample" usually implies: a
-model can propose a factor because it worked, without any of the reasoning that
-would make it work again.
+The historical panel ends in 2025. The actual training-data vintages of the closed generating models have not been verified, so chronological selection holdouts alone do not establish a post-model-training test. Structural novelty is not a memorization detector. Retention is a descriptive historical result, not a mathematical upper bound on future performance.
 
-**No post-training-cutoff window exists in this repo today.** A real post-cutoff
-test needs 2026 bars appended to the panel and the frozen expressions scored on
-that window alone. Until that data is here, treat every retention number above
-as an upper bound. The
-[recent literature on LLM-generated alpha](#does-the-llm-add-anything) is
-directly about this failure mode.
+A new window requires frozen expressions, a documented model release/vintage and an evaluation protocol fixed before its returns are inspected. New data alone does not undo the historical selection-label overlap.
 
 ## Does the LLM add anything?
 
-**One-shot, no. Inside an evolutionary loop, yes -- but only against the
-genetic-programming control, only for one of the two models, and only just.**
+**The completed study does not establish an LLM advantage after correcting its five paired comparisons.** Sonnet's loop has the largest historical equal-weight IC among the tested arms, but its comparison with GP has Holm p=0.235. Selection-label leakage further limits the interpretation.
 
 For one-shot prompting the original answer stands. The strongest Sonnet
 candidate scores |t| = 11.64 in sample; five seeds of random
@@ -182,7 +176,7 @@ What is new is the loop the literature actually reports gains from, run with a
 control that isolates it. On the 2018-2025 holdout the top 20 of `sonnet5-loop`
 combined equal-weight reaches IC 0.01170 (NW t = 3.73) against 0.00698 for the
 identical loop driven by random grammar draws -- a gap of +0.00472 at p = 0.047,
-the only one of five paired comparisons that clears 5%. Loop against one-shot
+a raw result that does not clear the five-comparison familywise hurdle. Loop against one-shot
 does not clear it for either model. See
 [Does the loop help, and is it the loop or the model](#does-the-loop-help-and-is-it-the-loop-or-the-model).
 
@@ -206,7 +200,7 @@ python scripts/sp500_run_baseline_comparison.py --bars data/us_equities/processe
 Every `best |t| in-sample` above is measured on the **2000-2017 selection window
 (4,528 trading days)**, with 2018-2025 held back and reported separately in the
 two right-hand columns. It is therefore not the same quantity as the 7.56 under
-[Universe](#universe), which is a full-sample figure — comparing the two
+[Universe](#universe), which is a full-sample figure ;  comparing the two
 directly would be comparing an 18-year window against a 26-year one.
 
 Three things fall out of it.
@@ -220,11 +214,10 @@ conclusion, which is exactly why there are five.
 
 **The iid null is far too generous, and the empirical one is the real bar.**
 E[max |t|] over N independent standard-normal draws is about 2.5 at N = 54. Every
-set here clears 9. So `|t| = 8` is not evidence of anything on this panel: the
+set here clears 9. An isolated `|t| = 8` does not establish superiority over this search control: the
 random-grammar row says a same-sized search over the same grammar reaches 9 to
 12 routinely. This also reframes the |t| figures under
-[Known limits](#known-limits): they are below the noise floor of a search this
-size, not merely inflated by sample length.
+[Known limits](#known-limits): they are below the empirical search-control range, not merely inflated by sample length.
 
 *Corrected 2026-09.* An earlier version of this section attributed that gap to
 daily IC autocorrelation, on the reasoning that the t-statistic assumes 4,500
@@ -259,7 +252,7 @@ For every scorable LLM candidate, its highest correlation to any of the 50
 transcribed
 Alpha101 signals, computed on the same panel through the same evaluator. The
 statistic is the **mean over days of the per-day cross-sectional rank
-correlation** — the same within-day quantity the IC itself measures:
+correlation** ;  the same within-day quantity the IC itself measures:
 
 | set | scorable | max corr | median corr | share > 0.9 |
 |---|---:|---:|---:|---:|
@@ -279,9 +272,9 @@ uses.
 Outright restatement is rare, and that is the more interesting result: the LLM
 is mostly *not* reciting Alpha101, it is producing genuinely different
 expressions that are no better than random ones. The two Sonnet candidates above
-0.9 are near-duplicates of published alphas — the top match, at 0.95, is
+0.9 are near-duplicates of published alphas ;  the top match, at 0.95, is
 `CS_RANK((($close - $open) / $open) - (($open - DELAY($close, 1)) / DELAY($close, 1)))`
-against alpha033 — so a mining run that reports them as discoveries is
+against alpha033 ;  so a mining run that reports them as discoveries is
 overcounting its own novelty, but only twice.
 
 Correlation is one axis and it is not enough on its own: it misses a
@@ -321,11 +314,11 @@ cutoff. The table above is that argument reproduced on this repo's own factors.
 ### How the baselines are built
 
 - **Random grammar** (`quantaalpha_us/factors/random_expressions.py`) samples
-  from exactly the grammar the sanitizer accepts — the function set, arities and
+  from exactly the grammar the sanitizer accepts ;  the function set, arities and
   field names are read out of `ExpressionSanitizer.FUNCTION_ARITY`,
   `VARIADIC_MIN_ARITY` and `KNOWN_FIELDS` rather than restated, and a test fails
   if the two ever drift apart. Sampling is typed, because an untyped sampler
-  passes `sanitize()` and then dies in `evaluate()` — which would quietly bias
+  passes `sanitize()` and then dies in `evaluate()` ;  which would quietly bias
   the null by deleting its malformed draws and keeping the survivors. Draws are
   matched to the Sonnet set's call-count and depth distribution so the null is a
   search of the same size and shape. About a quarter of raw draws evaluate to a
@@ -346,8 +339,8 @@ cutoff. The table above is that argument reproduced on this repo's own factors.
   101 published formulas were parsed and compared, confirming that no transcribed
   alpha needs a field the panel lacks, that every drop-for-field claim matches
   the published formula, and that all numeric constants match exactly. Operator
-  mappings and the deliberate deviations — epsilon-guarded division, `TS_ARGMAX`
-  orientation, rounded non-integer windows, and the `adv{d}` reading below — are
+  mappings and the deliberate deviations ;  epsilon-guarded division, `TS_ARGMAX`
+  orientation, rounded non-integer windows, and the `adv{d}` reading below ;  are
   documented in the file header.
 
   One deviation is an interpretation rather than a transcription. The paper
@@ -444,41 +437,18 @@ Alpha101 is the only group whose survivors keep their sign unanimously and
 retain most of their in-sample IC. The model's survivors sit between the
 published set and the null, closer to the null.
 
-### The fundamental factors are counted 63 times
+### Fundamentals: daily scoring versus quarterly subsampling
 
-Compustat fundamentals change on the report date and then sit still. A factor
-built on `$roa` takes one new value per firm per quarter, but the daily IC
-series scores it on every trading day, so the same observation is counted about
-63 times. It is tempting to say the mean IC is unaffected and only the
-t-statistic suffers, and that is wrong on both counts. The daily observations
-are not literal repeats -- the fundamental is frozen but forward returns are new
-every day, so each daily IC is a genuine cross-section -- yet they share a
-signal, so they are heavily dependent and the t-statistic divides by the root of
-an n that counts dependent draws. And the mean moves too: the median quarterly
-IC retention is **-0.32**, and **8 of the 12 factors change sign** between the
-daily average and the quarter-end dates. The daily figure is dominated by dates
-that are not quarter ends, where the fundamental is stalest.
+The quarterly script selects one **daily forward-return IC per quarter**, not a quarterly return target. The historical daily sample has 4,528 observations, versus 72 quarter-end observations. A predictor can remain unchanged while each subsequent return is a new outcome. Predictor persistence alone does not establish duplicated observations.
 
-Re-scored on one IC date per quarter, which is the coarsest grid on which
-consecutive observations carry new fundamental information:
-
-```bash
-python scripts/sp500_fundamental_quarterly.py
-```
-
-| | daily | quarterly |
+| historical diagnostic | daily | quarter-end subsample |
 |---|---:|---:|
-| factors with \|t\| > 2 | **10 of 12** | **0 of 12** |
-| median t retention against the iid daily t | | **0.11** |
-| square-root-rule reference, 1/sqrt(63) | | 0.13 |
+| factors with absolute t above 2 | 10 of 12 | 0 of 12 |
+| median t retention relative to daily iid t | | 0.11 |
 
-The retention lands on the sqrt rule almost exactly, which is what "the daily
-t-statistic is counting the same observation 63 times" predicts. Not one of the
-twelve fundamental factors survives being measured on independent observations.
+The roughly square-root loss in t-statistics is also compatible with losing sample size under independent daily observations. Daily HAC scoring still has 10 of 12 above two. These results therefore do not establish inflated daily significance, independent quarterly observations, or a causal effect of stale fundamentals. The source tables remain in `data/factor_zoo/`; the audit reproduces them in `reports/quarterly_sampling.csv`.
 
-Quarter-end is not a neutral day, so the test is repeated at the first, middle
-and last trading day of each quarter: median \|t\| of 0.52, 0.33 and 0.41, with
-0, 1 and 0 of twelve above 2. The result is not a calendar artifact.
+Dependence should be estimated on the outcome series. A genuine quarterly-return experiment would be a different target and must be declared before testing.
 
 ## Did Alpha101 decay after publication
 
@@ -523,8 +493,7 @@ Two readings, and the controls decide between them. If the 22% were
 publication-driven, the controls should decay less, because nobody published
 them. They decay MORE: 38% for the model's factors and 49% for random
 expressions, both significant. So the honest reading is that Alpha101 decayed by
-less than ordinary out-of-sample attrition on this universe, and there is no
-publication effect visible here at all. That is a weaker result than McLean and
+less than ordinary out-of-sample attrition on this universe, and this design does not identify a causal publication effect. That is a weaker result than McLean and
 Pontiff's, on one published set, one universe and one execution convention, and
 it is what the data says.
 
@@ -562,8 +531,7 @@ random pool barely moves (2.86, 2.83, 2.62, 2.47, 2.99).
 
 That contrast is the finding. Alpha101's edge is genuinely short-horizon and
 genuinely decays: 42 of 50 halve inside the 63-day grid, with a median half-life
-of **4.0 days**, and its cumulative curve is flat past a week, so there is
-nothing to be gained by holding longer. The random pool does not decay at all,
+of **4.0 days**, and its cumulative curve is flat past a week, under this IC definition; it does not identify the optimal cost-adjusted holding period. The random pool does not decay at all,
 because 185 of 270 of its members are not predicting anything time-varying, they
 are slow-moving characteristics: their cumulative IC keeps climbing to 0.032 at
 63 days, which is what a size or liquidity exposure looks like measured this
@@ -614,7 +582,7 @@ random draws within two nodes of its own size removes almost all of it:
 - model factors sharing a strictly larger subtree than their size-matched
   random median: **30 of 86**
 
-So the typical mined factor is not a paraphrase. The tail is a different matter,
+The typical mined factor has no excess subtree overlap by this particular comparison. That does not establish economic novelty or absence of memorization. The tail is a different matter,
 and the tail is what a paraphrase check is for:
 
 | shared subtree of at least | model sets | random grammar |
@@ -653,11 +621,10 @@ whether the loop is what helps.
 | window | dates | what may read it |
 |---|---|---|
 | fit | 2000-01-01 to 2013-12-31 | the model, through prompts |
-| validation | 2014-01-01 to 2017-12-31 | the early-stop rule and two threshold choices, never a prompt |
+| validation | 2014-01-01 to 2017-12-31 | early stopping, threshold choices and final ridge selection, never explicitly labelled in a prompt |
 | holdout | 2018-01-01 to 2025-12-31 | one script, once, at the end |
 
-No prompt contains a number computed on validation or holdout, or a date after
-2013-12-31. That is enforced by a test that scans every prompt the loop actually
+Prompt fields contain no explicitly labelled validation or holdout score. However, the historical fit scores could depend on forward prices after the fit cutoff; prompt-date scanning did not detect that indirect path. The narrower prompt-field rule is enforced by a test that scans every prompt the loop actually
 wrote to disk (`tests/test_evo_prompt_audit.py`), not just the templates, plus a
 structural check that the module building feedback blocks cannot import the
 scorer.
@@ -671,9 +638,7 @@ fitness = |t| * stability  -  complexity penalty  -  turnover penalty
 ```
 
 `t` is the mean daily rank IC over a circular block-bootstrap standard error
-(block 21), not the iid t: daily ICs are autocorrelated and the iid standard
-error is most of why this repo's headline t-statistics were never what they
-looked like. `stability` is the fraction of the 14 fit years with a positive
+(block 21), not the iid t: the dependence correction is measured, not inferred from signal persistence. The historical pool found only a small median HAC adjustment. `stability` is the fraction of the 14 fit years with a positive
 oriented IC, floored at 0.5. The complexity penalty charges 0.1 per base field
 beyond three and per free constant beyond one. The turnover penalty charges 0.5
 bp of daily return per unit of one-way daily turnover and then divides by the
@@ -852,10 +817,7 @@ for both arms so the comparison is on shared days:
 | opus5: loop vs GP loop | +0.00230 | [-0.00087, +0.00536] | 0.152 |
 | opus5: loop vs one-shot | +0.00149 | [-0.00405, +0.00694] | 0.582 |
 
-**One comparison of five clears 5%, and it is the one that isolates the model.**
-Sonnet's loop beats the identical loop driven by random grammar draws at
-p = 0.047, on a confidence interval whose lower end still touches zero. Opus's
-does not (p = 0.152).
+**No comparison clears the five-test Holm correction.** The smallest raw p-value is 0.047, adjusted to 0.235. Its reported percentile interval includes zero; that interval and the centered-bootstrap p-value use different constructions. Neither supports a stronger claim after multiplicity. These statistics retain the historical unpurged-label limitation.
 
 **The comparison the exercise was built to make fails.** Loop against one-shot
 is p = 0.399 for Sonnet and p = 0.582 for Opus. On this evidence, iterating with
@@ -868,9 +830,7 @@ Two results carry more than the p-values do.
 **The GP control's ridge combination is negative**: -0.00572 at t = -2.00, while
 its equal-weight combination is positive. Weights fitted on the fit window
 invert out of sample. That is what fitting weights on noise looks like, and the
-same ridge procedure helps Alpha101 (0.00978) and Opus one-shot (0.00985). It is
-the sharpest single piece of evidence that the GP archive is fitted noise rather
-than weak signal.
+same ridge procedure helps Alpha101 (0.00978) and Opus one-shot (0.00985). It documents instability of this fitted combination; it does not establish that every GP expression is noise.
 
 **Random grammar through the same archive rules is the only arm whose combined
 signal fails NW t > 2** (1.94). The pipeline is not blessing whatever is fed to
@@ -901,8 +861,7 @@ in process and never calls a model.
 in one island, after the other two islands had completed all five of their
 calls. Its seven complete rounds, and the admissions its finished round-8 calls
 earned, are in the archive and reproduce byte for byte. Its validation curve had
-already flattened -- 0.00729 at round 6, 0.00721 at round 7 -- so round 8 would
-most likely have triggered the same early stop the other two loop arms hit. **It
+already flattened -- 0.00729 at round 6, 0.00721 at round 7 -- but the uncompleted round's stopping outcome is unknown. **It
 is reported as 7 of 8 rather than quietly presented as complete.**
 
 The `cost_usd` column in `data/factor_zoo/evo_final_table.csv` is the CLI
@@ -910,9 +869,8 @@ envelope's **list-price equivalent**, not a bill. These runs authenticate
 through an interactive Claude subscription, so the real costs are model wall
 clock and usage limits, not dollars.
 
-Reproduce the table with
-`python scripts/sp500_evo_final_table.py` (it is the only script that reads the
-holdout) and the lineage of every top-20 factor is in [docs/lineage.md](docs/lineage.md).
+Verify the published comparisons without reading outcomes with
+`python scripts/sp500_evo_audit.py --check`. The original holdout has been consumed; the final-table entry point refuses a fresh score of these historical archives and the lineage of every top-20 factor is in [docs/lineage.md](docs/lineage.md).
 
 ## Universe
 
@@ -933,7 +891,7 @@ membership file is a hard error rather than a silent skip.
 ## Data source
 
 Market data comes from **CRSP via WRDS**. Every call site this repo actually
-uses — daily bars, bulk daily bars, and the ticker mapping — is served by
+uses ;  daily bars, bulk daily bars, and the ticker mapping ;  is served by
 `quantaalpha_us/data/crsp_client.py`, which also carries PERMNO identity,
 delisting returns and point-in-time membership that a plain vendor EOD feed
 does not.
@@ -980,7 +938,7 @@ Two consequences worth stating plainly:
 
 ## Known limits
 
-- Factor quality, not tooling, is the binding limit: mean ICs of 0.003-0.011 are weak against 0.02-0.05 for a decent published factor. The large t-statistics are worse than inflated by sample length — they are **below the noise floor of a search this size**. Random expressions drawn from the same grammar reach best |t| of 9.11 to 12.41 on this panel, so a |t| of 8 is not evidence of a factor at all; see [Does the LLM add anything?](#does-the-llm-add-anything).
+- Factor quality, not tooling, is the binding limit: mean ICs of 0.003-0.011 are weak against 0.02-0.05 for a decent published factor. The large t-statistics are worse than inflated by sample length ;  they are **below the noise floor of a search this size**. Random expressions drawn from the same grammar reach best |t| of 9.11 to 12.41 on this panel, so a |t| of 8 is not evidence of a factor at all; see [Does the LLM add anything?](#does-the-llm-add-anything).
 - Research quality still depends on the quality and timeliness of external data providers
 - Daily signals and retail-oriented execution assumptions are intentionally conservative and do not represent intraday HFT infrastructure
 - LLM factor generation is bounded and audited, but it still needs human judgment before production use

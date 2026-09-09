@@ -1,3 +1,5 @@
+> Updated scope, 2026-09-08: the original comparison below predates this repository's completed Part C evolutionary loop. Statements that evolution is absent describe the earlier one-shot study only. Current loop code is independently implemented; historical results have unpurged selection labels. See integrity_audit.md.
+
 # Provenance
 
 This repository is a US-equities research stack whose design descends from
@@ -14,7 +16,7 @@ the code level.** What was inherited is architectural and conceptual, and is ite
 Comparison was mechanical, not from memory:
 
 1. Every `.py` file in `quantaalpha_us/` (27 files) was compared against every `.py`
-   file in the upstream package tree (159 files) — 4,293 pairwise comparisons.
+   file in the upstream package tree (159 files) ;  4,293 pairwise comparisons.
 2. Both sides were normalised before comparison: blank lines and comments stripped,
    whitespace collapsed, and package-name differences (`quantaalpha_us` vs
    `quantaalpha`) rewritten so that naming alone could not depress the score.
@@ -30,7 +32,7 @@ The upstream tree used for this comparison was a local working copy at
 `../QuantaAlpha_CN`. That copy is **not pristine**: it carries an earlier local rebrand
 (39 files contain substituted project names) and has no git history to diff against.
 The name substitutions were normalised away in step 2, and the comparison's conclusion
-is one of *absence* of overlap, which a rebrand of this kind cannot manufacture — string
+is one of *absence* of overlap, which a rebrand of this kind cannot manufacture ;  string
 substitution can hide a matching identifier, not 500 matching lines of logic. The
 numbers below should still be treated as measured against that working copy rather than
 against an untouched upstream checkout. To re-verify against pristine upstream:
@@ -83,7 +85,7 @@ the same language typically land in this range purely on shared imports and idio
 ### The shared-basename files, examined directly
 
 Four non-`__init__` files share a basename with an upstream file. In every case the
-basename is the only thing shared — note that for three of the four, the upstream file
+basename is the only thing shared ;  note that for three of the four, the upstream file
 of the same name is not even the closest match in the tree.
 
 | Pair | Lines US / upstream | Intersecting non-blank lines |
@@ -95,14 +97,14 @@ of the same name is not even the closest match in the tree.
 
 The intersecting lines are language boilerplate, not logic. In full:
 
-- `universe.py` — `from __future__ import annotations`, `from dataclasses import dataclass`,
+- `universe.py` ;  `from __future__ import annotations`, `from dataclasses import dataclass`,
   `from pathlib import Path`, `import pandas as pd`, `@dataclass`, `if not path.exists():`, `)`
-- `walk_forward.py` — the same imports and `@dataclass`, plus the four window-boundary
+- `walk_forward.py` ;  the same imports and `@dataclass`, plus the four window-boundary
   field names `train_start` / `train_end` / `test_start` / `test_end` and their
   constructor keywords. These are the standard vocabulary for a walk-forward split, and
   the surrounding 500+ lines share nothing.
-- `market_data.py` — `from __future__ import annotations`, and nothing else.
-- `trading/risk.py` — `from __future__ import annotations`,
+- `market_data.py` ;  `from __future__ import annotations`, and nothing else.
+- `trading/risk.py` ;  `from __future__ import annotations`,
   `from dataclasses import dataclass, field`, `@dataclass`, and three risk-config fields
   that coincide in both name and default: `min_positions: int = 5`,
   `min_cash_pct: float = 0.02`, `flatten_on_kill: bool = True`. This is the single
@@ -129,7 +131,7 @@ sits in:
   largely the common Alpha101/Qlib vocabulary that predates both projects; the
   implementations behind them here are independent, and the semantics differ (all
   time-series operators in this repo use strict windows, so warm-up periods are NaN).
-- **The LLM-ideation framing** — that a frontier model is a hypothesis generator whose
+- **The LLM-ideation framing** ;  that a frontier model is a hypothesis generator whose
   output is worthless until it survives an evaluation harness it cannot influence.
 
 **Rebuilt from scratch, with no upstream counterpart:**
@@ -151,8 +153,8 @@ sits in:
   (`llm/budget.py`).
 - **Alpaca execution path and risk controls** (`trading/`).
 
-**Not carried over:** upstream's evolutionary search itself — the trajectory-level
-mutation and crossover operators that are the paper's actual contribution — has no
+**Not carried over:** upstream's evolutionary search itself ;  the trajectory-level
+mutation and crossover operators that are the paper's actual contribution ;  has no
 counterpart here. This repo does single-shot ideation plus selection. It is a
 descendant of QuantaAlpha's scaffolding, not a reimplementation of its algorithm.
 

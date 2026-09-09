@@ -44,6 +44,20 @@ def _runner(tmp_path, bars, alphas, *, backend, name="run", config=None):
 # ---- replay --------------------------------------------------------------
 
 
+@pytest.mark.parametrize("legacy", [True, False])
+def test_existing_run_manifest_is_preserved_on_invalid_resume(tmp_path, bars, alphas, legacy):
+    runner, store = _runner(tmp_path, bars, alphas, backend=MockBackend(seed=3))
+    config = runner.config.to_dict()
+    if legacy:
+        config.pop("label_policy")
+    store.write_manifest({"config": config})
+    before = store.manifest_path.read_bytes()
+    with pytest.raises(ValueError, match="label policy" if legacy else "already has a manifest"):
+        runner.run(resume=legacy)
+    assert store.manifest_path.read_bytes() == before
+    assert runner.backend.calls == 0
+
+
 def test_replay_reproduces_the_archive_byte_for_byte(tmp_path, bars, alphas):
     live, store = _runner(tmp_path, bars, alphas,
                           backend=MockBackend(seed=3, seed_expressions=(PLANTED_EXPRESSION,)),

@@ -40,6 +40,7 @@ from quantaalpha_us.factors.ic_panel import (
     universe_coverage,
 )
 from quantaalpha_us.factors.multiple_testing import block_bootstrap_se, newey_west_tstats
+from quantaalpha_us.factors.label_clock import labels_known_by
 
 
 def candidate_id(expression: str) -> str:
@@ -171,10 +172,15 @@ class PanelScorer:
         self._validation_dates = self._slice(index, w.validation_start, w.validation_end)
         self._holdout_dates = self._slice(index, w.holdout_start, w.holdout_end)
 
-        # forward returns, sliced per window so a scoring call never touches a
-        # date outside the window it claims to be measuring
+        def window_returns(dates, end, horizon=1):
+            forward = forward_returns_at(self.panels, horizon, LAGGED)
+            known = labels_known_by(index, end, horizon)
+            # Keep the rows for aligned ridge designs, but mask incomplete labels.
+            forward.loc[~known] = np.nan
+            return forward.loc[dates]
+
         self._fwd_fit = {
-            h: forward_returns_at(self.panels, h, LAGGED).loc[self.fit_dates]
+            h: window_returns(self.fit_dates, w.fit_end, h)
             for h in HORIZONS
         }
         # The horizon grid used only for the half-life, on a strided sample.
@@ -183,18 +189,16 @@ class PanelScorer:
         # comparing two different samples.
         stride = max(1, len(self.fit_dates) // max(config.half_life_min_dates, 1))
         self.half_life_stride = stride
-        self._half_life_dates = self.fit_dates[::stride]
+        common_dates = self.fit_dates.intersection(
+            index[labels_known_by(index, w.fit_end, max(HORIZONS))])
+        self._half_life_dates = common_dates[::stride]
         self._fwd_half_life = {
             h: panel.loc[panel.index.isin(self._half_life_dates)]
             for h, panel in self._fwd_fit.items()
         }
         self._fwd_cheap = self._fwd_fit[1].loc[self.cheap_dates]
-        self._fwd_validation = forward_returns_at(self.panels, 1, LAGGED).loc[
-            self._validation_dates
-        ]
-        self._fwd_holdout = forward_returns_at(self.panels, 1, LAGGED).loc[
-            self._holdout_dates
-        ]
+        self._fwd_validation = window_returns(self._validation_dates, w.validation_end)
+        self._fwd_holdout = window_returns(self._holdout_dates, w.holdout_end)
         self._stride_dates = self.fit_dates[:: config.correlation_date_stride]
         close = self.panels["close"]
         self._close_fit = close.loc[close.index.isin(self.fit_dates)]
