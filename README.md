@@ -10,6 +10,8 @@ python scripts/sp500_evo_audit.py --check
 
 This offline command verifies the five published IC differences and [adjusted comparison table](reports/evo_comparison_audit.csv), using committed aggregates only. The underlying bootstrap p-values and confidence intervals are historical inputs, not independently rebuilt from daily IC paths. Holm covers these five contrasts, not every earlier search choice. See [integrity and completion notes](docs/integrity_audit.md).
 
+**Fundamentals provenance:** an approved offline fingerprint identifies the cache as Compustat North America quarterly fundamentals and finds 32 of 32 sampled keys in current/restated data, versus 26 of 32 in the current unrevised view. It cannot recover the exact source alias or historical extract timestamp because no original sidecar exists. The evidence is in [reports/fundamentals_provenance_audit.csv](reports/fundamentals_provenance_audit.csv). Any genuinely new test must follow the [separate frozen protocol](docs/frozen_new_experiment_protocol.md); it must not resume the interrupted arm or reuse the consumed holdout.
+
 LLMStrat is a US equities research and execution stack for daily S&P 500 alpha mining. It builds a point-in-time universe, maintains market data, evaluates candidate signals with walk-forward controls, and can route approved portfolios into Alpaca paper or live trading with explicit risk checks.
 
 ## Provenance

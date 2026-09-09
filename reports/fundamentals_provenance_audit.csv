@@ -1,0 +1,13 @@
+evidence,item,value,interpretation
+local_parquet,latest_datadate,2026-07-31,Latest fiscal period present in the preserved local quarterly file
+local_parquet,latest_rdq,2026-08-31,Latest report date present in the preserved local quarterly file
+approved_wrds_fingerprint,local_keys_sampled,32,Deterministic keys sampled across the local file
+approved_wrds_fingerprint,comp.fundq_exact_matches,32,All sampled values match the currently entitled ordinary quarterly table
+approved_wrds_fingerprint,comp_snapshot.wrds_csq_restated_exact_matches,32,All sampled values also match the current restated Snapshot view
+approved_wrds_fingerprint,comp_snapshot.wrds_csq_pit_exact_matches,32,Each sampled value appears among revisions in the point-in-time history
+approved_wrds_fingerprint,comp_snapshot.wrds_csq_unrestated_exact_matches,26,Six sampled local values do not match the current unrevised view
+approved_wrds_profile,comp.fundq_current_max_datadate,2026-08-31,The current entitled table extends beyond the local extract
+approved_wrds_profile,comp.fundq_current_max_rdq,2026-09-04,The current entitled table extends beyond the local extract
+conclusion,product_family,Compustat North America quarterly fundamentals,Fields and fingerprint identify the product family
+conclusion,source_table,not uniquely recoverable,Current aliases and revision histories reproduce the same sampled values
+conclusion,extract_vintage,not recoverable,No query manifest or vintage metadata exists in the historical parquet
