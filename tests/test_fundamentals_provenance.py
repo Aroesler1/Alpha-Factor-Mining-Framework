@@ -156,3 +156,21 @@ def test_committed_checker_needs_no_external_inputs(monkeypatch, capsys):
         rebuilt.reset_index(drop=True),
         build_report(evidence, metadata).reset_index(drop=True),
     )
+
+
+def test_matching_row_hash_does_not_require_writable_numpy_views():
+    """CI NumPy wheels can mark pandas boolean views read-only."""
+    sampled = _local_frame(8)
+    candidate = provenance._normalise_candidate(sampled)
+    matched, digest = provenance._matching_row_hash(sampled.iloc[3], candidate)
+    assert matched is True
+    assert provenance.HASH_RE.fullmatch(digest)
+
+    unrestated = sampled.copy()
+    unrestated.loc[unrestated.index[:3], "niq"] += 1.0
+    unrestated_candidate = provenance._normalise_candidate(unrestated)
+    missed, empty = provenance._matching_row_hash(
+        sampled.iloc[0], unrestated_candidate
+    )
+    assert missed is False
+    assert empty == ""

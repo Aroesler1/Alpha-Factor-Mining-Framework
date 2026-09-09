@@ -194,17 +194,24 @@ def _matching_row_hash(local: pd.Series, candidate: pd.DataFrame) -> tuple[bool,
     if possible.empty:
         return False, ""
 
-    same = possible["_rdq"].eq(_normalise_date(local["rdq"])).to_numpy()
+    # Copy explicitly: pandas/NumPy may return a read-only view, and in-place
+    # &= then fails on some CI wheels with "output array is read-only".
+    same = np.array(
+        possible["_rdq"].eq(_normalise_date(local["rdq"])),
+        dtype=bool,
+        copy=True,
+    )
     for field in MATCH_FIELDS[1:]:
         left = pd.to_numeric(pd.Series([local[field]]), errors="coerce").iloc[0]
-        right = possible[f"_{field}"].to_numpy(dtype=float)
-        same &= np.isclose(
+        right = np.asarray(possible[f"_{field}"], dtype=float)
+        close = np.isclose(
             right,
             float(left) if not pd.isna(left) else np.nan,
             rtol=1e-10,
             atol=1e-12,
             equal_nan=True,
         )
+        same = np.logical_and(same, close)
     matches = possible.loc[same, REQUIRED_FIELDS]
     if matches.empty:
         return False, ""
