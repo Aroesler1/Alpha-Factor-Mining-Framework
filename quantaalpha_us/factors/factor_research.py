@@ -14,6 +14,7 @@ the caller's thresholds, not hidden.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
@@ -26,6 +27,7 @@ from quantaalpha_us.factors.expression_evaluator import (
     build_field_panels,
 )
 from quantaalpha_us.factors.expression_sanitizer import ExpressionSanitizer
+from quantaalpha_us.factors.label_clock import labels_known_by
 
 
 @dataclass
@@ -116,16 +118,16 @@ def score_expressions(
     """Sanitize, evaluate, and score expressions. Returns (report, signals).
 
     `ic_dates` restricts which dates contribute to the IC while leaving signal
-    evaluation on the full panel. Every operator here is backward-looking, so
-    computing signals over all history and then scoring a date subset leaks
-    nothing -- and unlike slicing the bars first, it does not blank out the
-    holdout's first 252 days to rolling-window warm-up.
+    evaluation on the full panel. Outcomes must finish by the last selected
+    date. Earlier feature history remains available for rolling-window warm-up.
     """
     sanitizer = sanitizer or ExpressionSanitizer()
     panels = build_field_panels(bars)
     evaluator = ExpressionEvaluator(panels)
     fwd = forward_open_returns(panels)
     if ic_dates is not None:
+        if len(ic_dates):
+            fwd.loc[~labels_known_by(fwd.index, ic_dates.max())] = np.nan
         fwd = fwd.loc[fwd.index.isin(ic_dates)]
 
     report = ResearchReport()
@@ -183,7 +185,13 @@ def mean_daily_rank_correlation(a: np.ndarray, b: np.ndarray, *,
     mask = np.isfinite(a) & np.isfinite(b)
     am = np.where(mask, a, np.nan).astype(np.float64)
     bm = np.where(mask, b, np.nan).astype(np.float64)
-    with np.errstate(invalid="ignore"):
+    # A date on which the two signals share no valid name is an empty slice, and
+    # nanmean warns about it through the warnings module rather than through
+    # errstate. The all-NaN rows are already excluded from the result below by
+    # the min_cross_section filter, so the warning is noise -- and it is emitted
+    # once per pair, which drowns a test run comparing an archive of factors.
+    with np.errstate(invalid="ignore"), warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
         ac = am - np.nanmean(am, axis=1, keepdims=True)
         bc = bm - np.nanmean(bm, axis=1, keepdims=True)
         cov = np.nansum(ac * bc, axis=1)
@@ -193,6 +201,61 @@ def mean_daily_rank_correlation(a: np.ndarray, b: np.ndarray, *,
     if not np.isfinite(per_day).any():
         return float("nan")
     return float(np.nanmean(per_day))
+
+
+def mean_daily_rank_correlation_many(
+    a: np.ndarray, stack: np.ndarray, *, min_cross_section: int = 30,
+    chunk: int = 32,
+) -> np.ndarray:
+    """`mean_daily_rank_correlation` of one matrix against many, at once.
+
+    Same statistic, same joint-validity masking, computed for a whole stack of
+    reference matrices instead of one at a time. The archive's correlation gate
+    compares every candidate against up to 144 members, and the per-pair Python
+    loop cost 18 ms a member -- 2.7 seconds per candidate at a full archive,
+    which was the single largest term in a round once the archive filled.
+
+    The per-day correlation is expanded into raw sums (sum a, sum b, sum ab,
+    sum aa, sum bb) rather than centring explicitly, because that turns the
+    whole thing into five reductions over one masked array and makes the
+    batching possible. Sums accumulate in float64; a test pins the result
+    against the per-pair reference.
+
+    Work is chunked over the stack so peak memory stays a few hundred megabytes
+    rather than scaling with the archive.
+    """
+    if stack.size == 0:
+        return np.zeros(0, dtype=float)
+    if a.shape != stack.shape[1:]:
+        return np.full(stack.shape[0], np.nan)
+    finite_a = np.isfinite(a)
+    out = np.empty(stack.shape[0], dtype=float)
+    for start in range(0, stack.shape[0], chunk):
+        block = stack[start:start + chunk]
+        mask = finite_a[None, :, :] & np.isfinite(block)
+        av = np.where(mask, a[None, :, :], 0.0)
+        bv = np.where(mask, block, 0.0)
+        n = mask.sum(axis=-1, dtype=np.float64)
+        sa = av.sum(axis=-1, dtype=np.float64)
+        sb = bv.sum(axis=-1, dtype=np.float64)
+        sab = (av.astype(np.float64) * bv).sum(axis=-1)
+        saa = (av.astype(np.float64) ** 2).sum(axis=-1)
+        sbb = (bv.astype(np.float64) ** 2).sum(axis=-1)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            safe_n = np.where(n > 0, n, np.nan)
+            cov = sab - sa * sb / safe_n
+            var_a = saa - sa * sa / safe_n
+            var_b = sbb - sb * sb / safe_n
+            denom = np.sqrt(var_a * var_b)
+            per_day = np.where(denom > 0, cov / denom, np.nan)
+        per_day = np.where(n >= min_cross_section, per_day, np.nan)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN rows
+            block_out = np.nanmean(per_day, axis=1)
+        out[start:start + block.shape[0]] = np.where(
+            np.isfinite(per_day).any(axis=1), block_out, np.nan
+        )
+    return out
 
 
 def ranked_flat(panel: pd.DataFrame, *, date_stride: int = 1) -> np.ndarray:

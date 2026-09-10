@@ -1,0 +1,93 @@
+{
+  "chosen": {
+    "max_abs_corr": 0.8,
+    "max_shared_subtree": 4
+  },
+  "criterion": "archive top-20 equal-weight mean IC on the validation window, ties broken toward the stricter gate",
+  "grid": [
+    {
+      "archive_size": 33,
+      "max_abs_corr": 0.6,
+      "max_shared_subtree": 4,
+      "missing_responses": 0,
+      "niches_filled": 10,
+      "rounds_run": 6,
+      "top20_validation_ic": 0.00616370273672448
+    },
+    {
+      "archive_size": 43,
+      "max_abs_corr": 0.7,
+      "max_shared_subtree": 4,
+      "missing_responses": 15,
+      "niches_filled": 11,
+      "rounds_run": 8,
+      "top20_validation_ic": 0.006849946848659942
+    },
+    {
+      "archive_size": 44,
+      "max_abs_corr": 0.8,
+      "max_shared_subtree": 4,
+      "missing_responses": 0,
+      "niches_filled": 12,
+      "rounds_run": 6,
+      "top20_validation_ic": 0.007314859702705069
+    },
+    {
+      "archive_size": 33,
+      "max_abs_corr": 0.6,
+      "max_shared_subtree": 5,
+      "missing_responses": 0,
+      "niches_filled": 10,
+      "rounds_run": 6,
+      "top20_validation_ic": 0.00616370273672448
+    },
+    {
+      "archive_size": 43,
+      "max_abs_corr": 0.7,
+      "max_shared_subtree": 5,
+      "missing_responses": 15,
+      "niches_filled": 11,
+      "rounds_run": 8,
+      "top20_validation_ic": 0.006849946848659942
+    },
+    {
+      "archive_size": 44,
+      "max_abs_corr": 0.8,
+      "max_shared_subtree": 5,
+      "missing_responses": 0,
+      "niches_filled": 12,
+      "rounds_run": 6,
+      "top20_validation_ic": 0.007314859702705069
+    },
+    {
+      "archive_size": 38,
+      "max_abs_corr": 0.6,
+      "max_shared_subtree": 6,
+      "missing_responses": 0,
+      "niches_filled": 10,
+      "rounds_run": 7,
+      "top20_validation_ic": 0.006298772216379549
+    },
+    {
+      "archive_size": 47,
+      "max_abs_corr": 0.7,
+      "max_shared_subtree": 6,
+      "missing_responses": 15,
+      "niches_filled": 11,
+      "rounds_run": 8,
+      "top20_validation_ic": 0.006902604996316931
+    },
+    {
+      "archive_size": 42,
+      "max_abs_corr": 0.8,
+      "max_shared_subtree": 6,
+      "missing_responses": 0,
+      "niches_filled": 11,
+      "rounds_run": 5,
+      "top20_validation_ic": 0.006908788284045791
+    }
+  ],
+  "replayed_run": "/private/tmp/claude-501/-Users-alex-Desktop-Berkeley-MFE-Kairos-Industry-Project/b8796d8f-a7b5-473d-b4bb-8687aa87b7c7/scratchpad/evo_pre/gp-loop",
+  "source": "scripts/sp500_evo_threshold_sweep.py, frozen after this sweep",
+  "tied_cells": 2
+}

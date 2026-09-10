@@ -377,9 +377,23 @@ class ExpressionEvaluator:
             return float(np.sqrt(x)) if x >= 0 else float("nan")
         if name == "POWER":
             arity(2)
+            # A panel exponent is legal and the published set uses it: several
+            # Alpha101 formulas are rank(x) ** rank(y). Elementwise ** handles
+            # it. (The expression GENERATORS still treat the exponent as a
+            # scalar slot, which is a restriction on what they propose, not on
+            # what the evaluator accepts.)
             return args[0] ** args[1]
         if name == "BOUND":
             arity(3)
+            # The bounds must be scalars. Without this check a panel in either
+            # bound reached float() and raised a bare TypeError, escaping the
+            # ExpressionError contract every other failure here honours -- the
+            # same trap _elementwise_minmax documents for MIN/MAX.
+            for position, bound in ((2, args[1]), (3, args[2])):
+                if isinstance(bound, pd.DataFrame):
+                    raise ExpressionError(
+                        f"BOUND argument {position} must be a numeric bound, not a panel"
+                    )
             panel = _as_panel(args[0])
             return panel.clip(lower=float(args[1]), upper=float(args[2]))
         if name == "MIN":

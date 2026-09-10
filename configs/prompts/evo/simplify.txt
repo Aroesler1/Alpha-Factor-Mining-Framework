@@ -1,0 +1,14 @@
+<<DSL>>
+
+TASK: SIMPLIFY. Each expression below was flagged as more complex than it needs
+to be. Return a simpler expression that keeps the same idea.
+
+Simpler means strictly fewer distinct fields, fewer free constants, or less
+depth. The simplification is accepted only if it also keeps at least
+<<MIN_IC_SHARE>> of the parent's fit-window |IC|, so do not remove the component
+doing the work. Put the parent's id in `parent_ids` and name what you removed in
+`changed_node`.
+
+<<PARENTS>>
+
+Return exactly one simplification per parent, <<N>> in total.

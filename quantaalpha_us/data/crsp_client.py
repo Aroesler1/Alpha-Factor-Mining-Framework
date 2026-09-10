@@ -84,6 +84,7 @@ class CRSPClient:
         self.username = username or os.environ.get(username_env) or os.environ.get("WRDS_USERNAME")
         self.password = password or next((os.environ.get(k) for k in password_keys if os.environ.get(k)), None)
         self._db: Any = None
+        self._connection_attempted = False
         self._libraries: Optional[list[str]] = None
         self._table_cache: dict[str, list[str]] = {}
         self._column_cache: dict[tuple[str, str], set[str]] = {}
@@ -119,15 +120,16 @@ class CRSPClient:
     def _get_db(self):
         if self._db is not None:
             return self._db
+        if os.environ.get("WRDS_DUO_READY") != "1":
+            raise RuntimeError("WRDS disabled: obtain current-session Duo approval and set WRDS_DUO_READY=1.")
+        if self._connection_attempted:
+            raise RuntimeError("This client already attempted WRDS; no retry. Fresh approval and a new client are required.")
         if not self.is_configured():
             raise RuntimeError("CRSP is not configured. Set CRSP_USERNAME and CRSP_API_KEY (or CRSP_PASSWORD).")
-        try:
-            import wrds  # type: ignore
-        except Exception as exc:  # noqa: BLE001
-            raise RuntimeError("The 'wrds' package is required for CRSP access.") from exc
+        from quantaalpha_us.data.wrds_session import open_wrds_session
 
-        with self._password_env():
-            self._db = wrds.Connection(wrds_username=self.username)
+        self._connection_attempted = True
+        self._db = open_wrds_session(self.username, self.password)
         return self._db
 
     def _list_libraries(self) -> list[str]:

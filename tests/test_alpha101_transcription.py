@@ -75,3 +75,31 @@ def synthetic_bars() -> pd.DataFrame:
     bars = pd.concat(rows, ignore_index=True)
     bars["dollar_volume"] = bars["close"] * bars["volume"]
     return bars
+
+
+# ---- published numbering -------------------------------------------------
+
+
+def test_the_reconstructed_numbering_covers_1_to_101_exactly_once():
+    """The structural report and the loop's feedback cite alphas by number, so a
+    drifted cursor would attribute a paraphrase to the wrong published alpha."""
+    from quantaalpha_us.factors import alpha101
+
+    kept = alpha101.load()
+    dropped = alpha101.dropped_numbers()
+    numbers = sorted([a.number for a in kept] + dropped)
+    assert len(kept) == 50
+    assert len(dropped) == 51
+    assert numbers == list(range(1, 102))
+
+
+def test_known_alphas_land_on_their_published_numbers():
+    from quantaalpha_us.factors import alpha101
+
+    by_number = {a.number: a.expression for a in alpha101.load()}
+    # alpha006 is -1 * correlation(open, volume, 10) in the paper
+    assert by_number[6] == "-1 * TS_CORR($open, $volume, 10)"
+    # alpha003 is -1 * correlation(rank(open), rank(volume), 10)
+    assert by_number[3] == "-1 * TS_CORR(CS_RANK($open), CS_RANK($volume), 10)"
+    # alpha005 is dropped for vwap, so 5 must be absent
+    assert 5 not in by_number

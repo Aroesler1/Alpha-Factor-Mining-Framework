@@ -1,0 +1,2 @@
+admitted,archive_size,best_fitness,calls,migrated,niches_filled,proposals,rejections,reseeded,round,scored,seconds,total_tokens,validation_top20_ic
+107,74,9.23845563329838,0,,15,719,alpha101_subtree=5; archive:niche_full_and_not_better=38; archive_subtree=49; cheap_screen=236; complexity=4; correlation=101; coverage=174; duplicate=5,,1,145,622.4,0,0.0062393476200875075

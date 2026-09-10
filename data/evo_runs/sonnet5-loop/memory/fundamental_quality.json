@@ -1,0 +1,17 @@
+{
+  "capacity": 12,
+  "rules": [
+    "TS_DELTA(fundamental,63)*TS_RANK($dollar_volume,w) accepted for $accrual_gap (w=21, fitness 0.708) but failed hard for $operating_margin (w=90, |t| 0.51) \u2014 this template doesn't transfer across fundamentals unchecked; validate per field.",
+    "6 of this round's 17 rejections (about a third) were exact within-run duplicates of an earlier proposal in the same batch. Dedupe new candidates against everything already proposed this round, not just the archive, before submitting.",
+    "CS_RANK($earnings_per_share ratio) \u2212 CS_RANK(TS_MEAN($return,w)) tripped archive_subtree from changing w alone (windows 5 and 42 both collided, sharing 6-7 nodes with archived siblings). The TS_MEAN($return,w) leg is saturated at every window tried \u2014 pair the eps ratio with a different right-hand transform entirely.",
+    "A crossover call failed outright by exceeding the output token cap, burning the round's budget for nothing. Favor crossover parent pairs with smaller combined tree size, or simplify one parent first, rather than pairing two large/deeply nested trees.",
+    "Drop $operating_margin for now: delta-of-mean, delta-minus-level, and z-score transforms all scored |t| 0.06-0.15 on the cheap screen this round.",
+    "Don't pair TS_MIN($low, 20-42) with any return term: 4 of 7 correlation rejects this round were this combination (rho 0.87-0.997), and twice the low-term added no signal beyond the return term alone.",
+    "Retire CS_RANK($roe) * TS_RANK($dollar_volume, 21-or-42)-based products: they caused the other 3 of 7 correlation rejects (rho 0.84-0.94) regardless of the second leg.",
+    "CS_RANK(eps/close) - CS_RANK(X) is saturated like bare eps-rank-minus-X: it shares 6 nodes with an archive member whether X is TS_STD(return) or TS_MEAN(return).",
+    "Check new proposals against each other, not just the archive: 5 of 19 rejects (26%) were within-run duplicates, some re-deriving known-saturated shapes at a new window.",
+    "Two leverage shapes missed the cheap screen narrowly (|t| 0.83 and 0.94): a window-difference of $leverage itself, and $leverage times volume's coefficient of variation. A constant tweak won't clear either; it needs a different construction.",
+    "Keep crossover calls well under the 64k output-token cap: one pairing this round failed outright from exceeding it, losing that slot entirely.",
+    "Fundamental/fundamental ratios are a distinct, still-open template from rank-spreads: CS_RANK($asset_turnover/$leverage) cleared at 0.711, worth a couple more field pairs before treating it as saturated."
+  ]
+}

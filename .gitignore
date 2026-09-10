@@ -29,3 +29,8 @@ data/factor_research*/
 # Cross-agent working notes. Kept locally, not published: it is scratch context
 # for whoever picks the work up next, not part of the repo.
 handoff.md
+
+# Cached IC matrices for the factor-zoo work: ~200 MB of derived intermediates
+# rebuilt by scripts/sp500_build_factor_pool.py. The small summary tables next
+# to it (pool.csv and the report CSVs) are committed.
+data/factor_zoo/cache/

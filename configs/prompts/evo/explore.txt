@@ -1,0 +1,22 @@
+<<DSL>>
+
+TASK: EXPLORE. Propose <<N>> NEW factor expressions.
+
+Direction for this island
+<<DIRECTION>>
+
+Archive coverage so far. Each niche is (IC half-life bucket / data family /
+turnover bucket). Aim at the emptiest ones: a factor that fills an empty niche
+is worth more to this search than a slightly better version of a full one.
+<<NICHE_SUMMARY>>
+
+Sub-expressions already heavily used by the published Alpha101 set. Reusing one
+of these wholesale will be rejected as a paraphrase; they are listed so you can
+avoid them, not so you can vary them cosmetically.
+<<BAN_LIST>>
+
+<<MEMORY>>
+
+For each proposal give a one-line economic rationale: what mechanism would make
+this predict returns. "It is a momentum variant" is not a mechanism.
+Leave `parent_ids` empty and `changed_node` empty for EXPLORE.

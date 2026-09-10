@@ -1,0 +1,7 @@
+{
+  "alpha101_turnover_median": 0.3123036966476347,
+  "fit_end": "2013-12-31",
+  "fit_start": "2000-01-01",
+  "n_alphas": 50,
+  "source": "scripts/sp500_evo_calibrate.py on the fit window"
+}

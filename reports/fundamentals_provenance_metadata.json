@@ -1,0 +1,75 @@
+{
+  "historical_extract_vintage": "not recoverable",
+  "historical_source_table": "not uniquely recoverable",
+  "limitations": [
+    "Current aliases and revision histories reproduce the sampled values, so the exact historical source alias is not uniquely recoverable.",
+    "The historical parquet has no query manifest or vintage sidecar, so its extraction vintage is not recoverable.",
+    "The approved cached local extract contains only the selected sample; the original full row count and source indices are not recoverable."
+  ],
+  "local_input": {
+    "file": "alpha_local_fundq_fingerprint.csv",
+    "latest_datadate": "2026-07-31",
+    "latest_rdq": "2026-08-31",
+    "profile_report_file": "fundamentals_provenance_audit.csv",
+    "profile_report_sha256": "3571e279a4c7aaba0cd743f0b414ec7284621229024d8033d9a370607a82a38b",
+    "profile_source": "preserved sanitized aggregate report",
+    "sha256": "49a228dc1149b844026e04ea6424bd7e3048448e02ceb86756014105f246d179"
+  },
+  "product_family": "Compustat North America quarterly fundamentals",
+  "schema_version": 1,
+  "selection": {
+    "algorithm": "numpy.linspace(0, n_rows - 1, min(32, n_rows)).astype(int)",
+    "historical_full_input_rows": "not recoverable from the approved preselected cache",
+    "historical_source_indices": "not recoverable from the approved preselected cache",
+    "input_kind": "approved_preselected_cache",
+    "input_rows": 32,
+    "max_samples": 32,
+    "sample_rows": 32
+  },
+  "table_evidence": [
+    {
+      "current_max_datadate": "2026-08-31",
+      "current_max_rdq": "2026-09-04",
+      "extract_file": "alpha_fundq_fingerprint_00.csv.gz",
+      "extract_sha256": "7d9e54ef7a29d2bee5b371cb3df335c30db0b356f5852332e1901c924f373d12",
+      "match_column": "comp_fundq_match",
+      "profile_file": "alpha_fundq_profile_00.csv.gz",
+      "profile_sha256": "dafbc2eaf4589a38e692a28f6fb97432b24538a693551249c6d99fddc703e13b",
+      "row_hash_column": "comp_fundq_row_sha256",
+      "source_table": "comp.fundq"
+    },
+    {
+      "current_max_datadate": "2026-08-31",
+      "current_max_rdq": "2026-09-03",
+      "extract_file": "alpha_fundq_fingerprint_08.csv.gz",
+      "extract_sha256": "e6bc3a6bc6051530bf0d4576d1d17be074ce4f5b81701dd0e4fa0d26a36c4208",
+      "match_column": "comp_snapshot_restated_match",
+      "profile_file": "alpha_fundq_profile_08.csv.gz",
+      "profile_sha256": "36a1b863ff35ad3b33ded83e5b5a94dd4fb5e7052a900da5ee6368fea0983f4c",
+      "row_hash_column": "comp_snapshot_restated_row_sha256",
+      "source_table": "comp_snapshot.wrds_csq_restated"
+    },
+    {
+      "current_max_datadate": "2026-08-31",
+      "current_max_rdq": "2026-09-03",
+      "extract_file": "alpha_fundq_fingerprint_04.csv.gz",
+      "extract_sha256": "daec3d6fb53f0641d09cef3ac6acd7c283644f5b90f7fe9805e90ab788de736d",
+      "match_column": "comp_snapshot_pit_match",
+      "profile_file": "alpha_fundq_profile_04.csv.gz",
+      "profile_sha256": "f4435f051e63e5d9d7b54decd125c9ee775b617bbc7032ee1b636682cdbb9c67",
+      "row_hash_column": "comp_snapshot_pit_row_sha256",
+      "source_table": "comp_snapshot.wrds_csq_pit"
+    },
+    {
+      "current_max_datadate": "2026-08-31",
+      "current_max_rdq": "2026-09-03",
+      "extract_file": "alpha_fundq_fingerprint_10.csv.gz",
+      "extract_sha256": "165a9482cf62b5e101adcbc44d5c2c38c67b143c076f1fb29d18d8f535d1655e",
+      "match_column": "comp_snapshot_unrestated_match",
+      "profile_file": "alpha_fundq_profile_10.csv.gz",
+      "profile_sha256": "445e1d1ba31687b27873877e3c16ccc1c62cd82c9c0a2980d354bee044822e40",
+      "row_hash_column": "comp_snapshot_unrestated_row_sha256",
+      "source_table": "comp_snapshot.wrds_csq_unrestated"
+    }
+  ]
+}

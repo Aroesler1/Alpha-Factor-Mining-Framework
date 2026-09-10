@@ -1,0 +1,12 @@
+gate,count
+cheap_screen,133
+correlation,79
+archive_subtree,69
+coverage,27
+crossover_not_a_fusion,22
+duplicate,16
+mutation_not_local,15
+alpha101_subtree,3
+complexity,1
+sanitizer,1
+simplify_lost_too_much_ic,1
