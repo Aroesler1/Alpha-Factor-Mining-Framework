@@ -19,7 +19,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest numpy pandas pyarrow scipy
+          pip install pytest numpy pandas pyarrow scipy pyyaml
 
       # The suite is deliberately offline: no test reads a vendor API, a
       # database, or a credential. Anything needing licensed data is exercised
@@ -33,3 +33,6 @@ jobs:
 
       - name: Verify sanitized fundamentals provenance report
         run: python scripts/sp500_fundamentals_provenance.py --check
+
+      - name: Verify report summaries against their source tables
+        run: python scripts/sp500_build_reports.py --check

@@ -12,6 +12,15 @@ how far the survivors are from the published literature structurally, and how
 they do out of sample -- individually and, more importantly, combined.
 
     python scripts/sp500_evo_final_table.py --runs-dir data/evo_runs
+
+The original evaluation of the committed archives is consumed. `--rescore`
+re-scores those frozen archives on the current panel and label policy: the
+search is not re-run (no model is called and archive membership is unchanged),
+but every fitness, top-20 choice, holdout IC and comparison is recomputed. It
+writes to a new --out-dir with a manifest of input hashes.
+
+    python scripts/sp500_evo_final_table.py --rescore --out-dir /tmp/evo_rescore \
+        --bars <daily_bars_fundamentals.parquet> --membership <membership.parquet>
 """
 from __future__ import annotations
 
@@ -40,7 +49,8 @@ from quantaalpha_us.evo.report import (  # noqa: E402
     candidates_generated,
     rejection_tally,
 )
-from quantaalpha_us.evo.scoring import PanelScorer, candidate_id  # noqa: E402
+from quantaalpha_us.evo.scoring import (PanelScorer, candidate_id,  # noqa: E402
+                                       combined_rank_signal, signed_centred_ranks)
 from quantaalpha_us.factors import alpha101  # noqa: E402
 from quantaalpha_us.factors.factor_research import _daily_spearman_ic  # noqa: E402
 from quantaalpha_us.factors.ic_panel import LAGGED, apply_membership_filter, load_ic_table  # noqa: E402
@@ -54,6 +64,27 @@ from quantaalpha_us.factors.multiple_testing import (  # noqa: E402
 
 TOP_N = 20
 RIDGE_GRID = (0.01, 0.1, 1.0, 10.0, 100.0)
+RESCORE_STATUS = "rescored_split_adjusted_purged_labels_search_frozen"
+
+
+def rescore_entries(entries, scorer: PanelScorer) -> tuple[list, list[str]]:
+    """Recompute every archive member's fit-window metrics on the current scorer.
+
+    Membership is the frozen search's; fitness, sign, t-stat, half-life and
+    turnover are recomputed, so the top-20 is re-chosen on corrected fit data.
+    """
+    from dataclasses import replace
+
+    out, failed = [], []
+    for entry in entries:
+        try:
+            signal = scorer.evaluate(entry.expression)
+        except Exception:  # noqa: BLE001
+            failed.append(entry.expression)
+            continue
+        metrics = scorer.metrics(entry.expression, signal)
+        out.append(replace(entry, fitness=metrics.fitness, metrics=metrics.to_dict()))
+    return out, failed
 
 
 # --------------------------------------------------------------------------
@@ -68,11 +99,8 @@ def fit_ridge(scorer: PanelScorer, expressions, signs, *, alphas=RIDGE_GRID) -> 
     the VALIDATION window, which is what validation is for; choosing it on the
     holdout would make the holdout number a fitted number.
     """
-    panels = []
-    for expression, sign in zip(expressions, signs):
-        panel = scorer.evaluate(expression)
-        ranks = panel.rank(axis=1, pct=True) * sign
-        panels.append(ranks.sub(ranks.mean(axis=1), axis=0))
+    panels = [signed_centred_ranks(scorer.evaluate(expression), sign)
+              for expression, sign in zip(expressions, signs)]
 
     def design(dates):
         columns = [p.loc[p.index.isin(dates)].to_numpy(dtype=np.float32).ravel()
@@ -108,16 +136,9 @@ def fit_ridge(scorer: PanelScorer, expressions, signs, *, alphas=RIDGE_GRID) -> 
 
 def combined_holdout_ic(scorer: PanelScorer, expressions, signs,
                         weights=None) -> pd.Series:
-    """Daily holdout IC of one combined signal."""
-    total = None
-    count = None
-    for i, (expression, sign) in enumerate(zip(expressions, signs)):
-        weight = 1.0 if weights is None else float(weights[i])
-        ranks = scorer.evaluate(expression).rank(axis=1, pct=True) * sign * weight
-        total = ranks if total is None else total.add(ranks, fill_value=0.0)
-        present = ranks.notna().astype(float)
-        count = present if count is None else count.add(present, fill_value=0.0)
-    combined = total / count.replace(0, np.nan)
+    """Daily holdout IC of one combined signal (see `scoring.combined_rank_signal`)."""
+    combined = combined_rank_signal([scorer.evaluate(e) for e in expressions], signs,
+                                    weights=weights)
     return _daily_spearman_ic(combined, scorer._fwd_holdout, scorer.min_cross_section)
 
 
@@ -278,18 +299,22 @@ def main() -> int:
                         default=str(US_ROOT / "data" / "us_equities" / "reference"
                                     / "sp500_membership_daily.parquet"))
     parser.add_argument("--zoo-dir", default=str(US_ROOT / "data" / "factor_zoo"))
-    parser.add_argument("--out-dir", default=str(US_ROOT / "data" / "factor_zoo"))
+    parser.add_argument("--out-dir", default=str(US_ROOT / "data" / "factor_zoo_eval"),
+                        help="a new directory; the committed tables in --zoo-dir are never overwritten")
     parser.add_argument("--draws", type=int, default=2000)
     parser.add_argument("--arms", nargs="*", default=None)
     parser.add_argument("--freeze-evaluation", action="store_true",
                         help="freeze input hashes/settings without scoring; review this manifest before evaluation")
+    parser.add_argument("--rescore", action="store_true",
+                        help="re-score the frozen archives on the current panel and label policy; "
+                             "no search is re-run")
     args = parser.parse_args()
 
     started = time.time()
     config = EvoConfig(arm="final")
     runs_dir = Path(args.runs_dir)
     consumed = runs_dir / "_evaluation_consumed.json"
-    if consumed.exists():
+    if consumed.exists() and not args.rescore:
         raise SystemExit("This holdout is already consumed. Run scripts/sp500_evo_audit.py --check instead.")
     arm_paths = [p for p in sorted(runs_dir.iterdir()) if p.is_dir()
                  and not p.name.endswith("-raw") and not p.name.startswith("_")
@@ -298,7 +323,7 @@ def main() -> int:
         raise SystemExit("No completed arms to freeze")
     for path in arm_paths:
         saved = RunStore(path).manifest().get("config", {})
-        if saved.get("label_policy") != config.label_policy:
+        if saved.get("label_policy") != config.label_policy and not args.rescore:
             raise SystemExit("Historical archives used unpurged labels. Preserve their published tables; do not relabel a rescore as clean.")
     files = {"bars": Path(args.bars), "membership": Path(args.membership)}
     for path in arm_paths:
@@ -324,7 +349,16 @@ def main() -> int:
         raise SystemExit("Use a separate new output directory; historical evidence must not be overwritten.")
     if Path(args.out_dir).exists():
         raise SystemExit("Evaluation output directory must not already exist")
-    claim_evaluation(manifest, consumed, snapshot)
+    if args.rescore:
+        from datetime import datetime, timezone
+
+        write_exclusive(Path(args.out_dir) / "evo_rescore_manifest.json", {
+            **snapshot, "status": RESCORE_STATUS,
+            "note": "archives frozen from the original search; every score recomputed on the "
+                    "split-adjusted panel with outcome-end label purging",
+            "created_at_utc": datetime.now(timezone.utc).isoformat()})
+    else:
+        claim_evaluation(manifest, consumed, snapshot)
     bars = apply_membership_filter(pd.read_parquet(args.bars), args.membership)
     scorer = PanelScorer(bars, config, memoize=True)
     alphas = alpha101.load()
@@ -379,7 +413,12 @@ def main() -> int:
         # discovered() drops the island seeds: every arm starts from the same
         # three hand-written expressions, so counting them would flatter all
         # arms equally and blur exactly the comparison this table is for
-        summaries[path.name] = summarise_arm(path.name, archive.discovered(), scorer,
+        entries = archive.discovered()
+        if args.rescore:
+            entries, failed = rescore_entries(entries, scorer)
+            if failed:
+                print(f"  {len(failed)} archive member(s) no longer evaluate: {failed[:3]}")
+        summaries[path.name] = summarise_arm(path.name, entries, scorer,
                                              gates, store, random_crit)
 
     # The two reference sets, through the same archive rules the arms face.
@@ -473,10 +512,13 @@ def main() -> int:
         compare(f"{model}: loop vs GP loop", f"{model}-loop", "gp-loop")
     compare("sonnet5: full vs scalar feedback", "sonnet5-loop", "sonnet5-scalar")
     comparison_table = pd.DataFrame(comparisons)
+    if args.rescore and not comparison_table.empty:
+        comparison_table["evidence_status"] = RESCORE_STATUS
     if not comparison_table.empty:
         comparison_table.to_csv(out_dir / "evo_paired_bootstrap.csv", index=False)
         adjusted = adjust_comparisons(comparison_table)
-        adjusted["evidence_status"] = "purged_labels_conditional_on_frozen_search"
+        if not args.rescore:
+            adjusted["evidence_status"] = "purged_labels_conditional_on_frozen_search"
         adjusted.to_csv(out_dir / "evo_comparison_audit.csv", index=False)
 
     # ---- lineage ---------------------------------------------------------
@@ -486,6 +528,10 @@ def main() -> int:
                "and the chain of parents it came from. Rationales are the model's own words "
                "and are not evidence of anything; they are here so a factor can be read "
                "back to the reasoning that produced it.\n"]
+    if args.rescore:
+        lineage.append("Rescored: archive membership, parents and rationales come from the "
+                       "original search; fitness and the top-20 order are recomputed on the "
+                       "split-adjusted panel with outcome-end label purging.\n")
     for name, summary in summaries.items():
         store = RunStore(runs_dir / name)
         archive = load_archive(config, store.archive_path) if (
@@ -508,9 +554,9 @@ def main() -> int:
                 current = parent
             lineage.append("- parents: " + (" <- ".join(chain) if chain
                                             else "none (proposed from scratch)"))
-    docs = US_ROOT / "docs"
-    docs.mkdir(exist_ok=True)
-    (docs / "lineage.md").write_text("\n".join(lineage) + "\n", encoding="utf-8")
+    # written beside the tables; docs/lineage.md is committed evidence and is
+    # only replaced by copying a reviewed output over it
+    (out_dir / "lineage.md").write_text("\n".join(lineage) + "\n", encoding="utf-8")
 
     # ---- print -----------------------------------------------------------
     print("\n" + "=" * 150)
@@ -594,7 +640,7 @@ def main() -> int:
     print(f"\n-> {out_dir / 'evo_final_table.csv'}")
     print(f"-> {out_dir / 'evo_combined_table.csv'}")
     print(f"-> {out_dir / 'evo_top20_detail.csv'}")
-    print(f"-> {docs / 'lineage.md'}")
+    print(f"-> {out_dir / 'lineage.md'}")
     print(f"scoring wall clock: {(time.time() - started) / 60:.1f} min")
     return 0
 

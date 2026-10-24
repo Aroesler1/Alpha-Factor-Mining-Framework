@@ -98,11 +98,15 @@ def build_features(bars: pd.DataFrame, mined_expressions: Optional[list[str]] = 
         from quantaalpha_us.factors.expression_evaluator import (
             ExpressionEvaluator,
             build_field_panels,
+            panel_key,
         )
 
-        panels = build_field_panels(df)
+        key = panel_key(df)
+        panels = build_field_panels(df, key=key)
         evaluator = ExpressionEvaluator(panels)
-        pair_index = pd.MultiIndex.from_frame(df[["date", "symbol"]])
+        ident = (df[key].astype("int64") if key == "permno"
+                 else df[key].astype(str).str.upper())
+        pair_index = pd.MultiIndex.from_arrays([pd.to_datetime(df["date"]).dt.normalize(), ident])
         for i, expr in enumerate(mined_expressions):
             col = f"r_mined_{i:02d}"
             signal = evaluator.evaluate(str(expr))
@@ -127,7 +131,9 @@ def _select_signals_from_snapshot(
 
     work = today.copy()
 
-    if active_universe:
+    # None means "no universe filter"; an EMPTY universe means no member is
+    # tradable that day and must select nothing, not everything
+    if active_universe is not None:
         allowed = {s.upper() for s in active_universe}
         work = work[work["symbol"].isin(allowed)]
 

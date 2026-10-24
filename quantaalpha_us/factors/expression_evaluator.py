@@ -21,8 +21,11 @@ Design:
 
 Field panels (see `build_field_panels`):
     $open $high $low $close $adj_close $volume $dollar_volume $return
-`$close` maps to adjusted close when available (research convention);
-`$return` is the daily percentage change of that panel.
+`$close` maps to adjusted close when available (research convention), and
+`$open`/`$high`/`$low` are put on the same split-adjusted scale;
+`$return` is the daily percentage change of that panel. `$volume` stays in raw
+shares (the panel carries no share-adjustment factor) and `$dollar_volume` is
+raw price times raw shares, which a split does not change.
 """
 
 from __future__ import annotations
@@ -43,18 +46,37 @@ class ExpressionError(ValueError):
 PanelOrScalar = Any  # pd.DataFrame | float
 
 
-def build_field_panels(bars: pd.DataFrame) -> dict[str, pd.DataFrame]:
+def panel_key(bars: pd.DataFrame) -> str:
+    """The column that identifies one security across dates.
+
+    PERMNO when the frame carries it for every row. Tickers change (one company,
+    several symbols) and are reused (several companies, one symbol), so a panel
+    keyed by ticker restarts rolling windows at every rename and can splice two
+    companies into one time series.
+    """
+    if "permno" in bars.columns and len(bars) and bars["permno"].notna().all():
+        return "permno"
+    return "symbol"
+
+
+def build_field_panels(bars: pd.DataFrame, key: str | None = None) -> dict[str, pd.DataFrame]:
     """Pivot long-format daily bars into wide field panels.
 
-    `bars` needs columns: date, symbol, and any of open/high/low/close/
-    adj_close/volume/dollar_volume. Output keys are the `$field` names the
-    evaluator understands.
+    `bars` needs columns: date, symbol (or permno), and any of open/high/low/
+    close/adj_close/volume/dollar_volume. Output keys are the `$field` names
+    the evaluator understands. Columns are keyed by `key`, which defaults to
+    `panel_key(bars)`.
     """
+    key = key or panel_key(bars)
+    ident = (pd.to_numeric(bars[key], errors="coerce") if key == "permno"
+             else bars[key].astype(str).str.upper())
     work = bars.assign(
         date=pd.to_datetime(bars["date"], errors="coerce").dt.normalize(),
-        symbol=bars["symbol"].astype(str).str.upper(),
+        **{key: ident},
     )
-    work = work.dropna(subset=["date", "symbol"]).sort_values(["date", "symbol"])
+    work = work.dropna(subset=["date", key]).sort_values(["date", key])
+    if key == "permno":
+        work[key] = work[key].astype("int64")
 
     # Fundamental fields are optional: present only when the caller passed a bar
     # frame augmented by factors.fundamentals. They are already point-in-time
@@ -69,7 +91,7 @@ def build_field_panels(bars: pd.DataFrame) -> dict[str, pd.DataFrame]:
     for col in ("open", "high", "low", "close", "adj_close", "volume",
                 "dollar_volume") + fundamental_fields:
         if col in work.columns:
-            panel = work.pivot_table(index="date", columns="symbol", values=col, aggfunc="last")
+            panel = work.pivot_table(index="date", columns=key, values=col, aggfunc="last")
             # parquet commonly carries pandas nullable dtypes (Float64/Int64);
             # numpy ufuncs and np.where raise "boolean value of NA is ambiguous"
             # on those, so pin every panel to plain float64 with NaN missings
@@ -93,14 +115,27 @@ def build_field_panels(bars: pd.DataFrame) -> dict[str, pd.DataFrame]:
         for key in list(panels):
             panels[key] = panels[key].reindex(index=all_dates, columns=all_symbols)
 
-    # research convention: $close means the adjusted close when available
+    # dollar volume is raw price times raw shares, so take it before the
+    # price fields are rescaled
+    if "dollar_volume" not in panels and {"close", "volume"} <= panels.keys():
+        panels["dollar_volume"] = panels["close"] * panels["volume"]
+
+    # research convention: $close means the adjusted close when available.
+    # CRSP opens, highs and lows are raw, so they get the same day's
+    # adj_close / close factor; otherwise every intraday ratio and every
+    # open-to-open label jumps by the split ratio around a split
+    if {"adj_close", "close"} <= panels.keys():
+        with np.errstate(divide="ignore", invalid="ignore"):
+            factor = panels["adj_close"] / panels["close"]
+        factor = factor.where(np.isfinite(factor) & (factor > 0))
+        for col in ("open", "high", "low"):
+            if col in panels:
+                panels[col] = panels[col] * factor
     if "adj_close" in panels:
         panels["close"] = panels["adj_close"]
     if "close" in panels:
         # fill_method=None: never forward-fill across listing gaps before differencing
         panels["return"] = panels["close"].pct_change(fill_method=None)
-    if "dollar_volume" not in panels and {"close", "volume"} <= panels.keys():
-        panels["dollar_volume"] = panels["close"] * panels["volume"]
     return panels
 
 

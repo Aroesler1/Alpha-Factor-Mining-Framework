@@ -336,3 +336,29 @@ class EvoConfig:
             "bootstrap_draws": self.bootstrap_draws,
             "bootstrap_block": self.bootstrap_block,
         }
+
+
+def config_from_manifest(manifest: dict) -> EvoConfig:
+    """Rebuild a run's config from its own manifest, not from today's defaults.
+
+    A replay must use the run's arm name (the per-round random streams are keyed
+    on it), its seed, mode, feedback mode, schedule and the gate thresholds it
+    actually ran with; otherwise the saved replies are matched to different
+    parents and the replay is a different experiment that reads the same text.
+    """
+    saved = (manifest or {}).get("config", {}) or {}
+    schedule_fields = set(Schedule.__dataclass_fields__)
+    schedule = Schedule(**{k: v for k, v in (saved.get("schedule") or {}).items()
+                           if k in schedule_fields})
+    gate_fields = set(Gates.__dataclass_fields__)
+    gates = Gates(**{k: v for k, v in (saved.get("gates") or {}).items() if k in gate_fields})
+    return EvoConfig(
+        arm=saved.get("arm", "replay"),
+        model=saved.get("model", "replay"),
+        effort=saved.get("effort", "n/a"),
+        seed=int(saved.get("seed", EvoConfig.seed)),
+        mode=saved.get("mode", "loop"),
+        feedback_mode=saved.get("feedback_mode", "full"),
+        schedule=schedule,
+        gates=gates,
+    )

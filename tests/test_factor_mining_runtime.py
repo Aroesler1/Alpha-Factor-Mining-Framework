@@ -59,3 +59,14 @@ def test_factor_mining_runtime_extracts_json_from_fenced_content_and_dedupes() -
     )
     assert factors == ["TS_MEAN($close,20)"]
     assert stats.valid_factors == 1
+
+
+def test_default_mining_path_does_not_send_endpoint_models_to_claude() -> None:
+    from scripts.sp500_run_factor_mining import select_models
+
+    cfg = {"primary_model": "gpt-5.4", "fallback_models": ["gemini-3.1-pro"]}
+    assert select_models(cfg, live_call=True) == ["gpt-5.4", "gemini-3.1-pro"]
+    default = select_models(cfg, live_call=False)
+    assert default and all(m.startswith("claude-") for m in default)
+    assert select_models({**cfg, "claude_models": ["claude-sonnet-5"]}, live_call=False) == [
+        "claude-sonnet-5"]

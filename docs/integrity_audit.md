@@ -1,5 +1,11 @@
 # Completed evolutionary run: integrity repair
 
+> 2026-10 update: the numbers below describe the 2026-09 state. In 2026-10 the factor
+> panel was corrected (split-adjusted opens, highs and lows; PERMNO-keyed series) and
+> every committed archive and factor set was re-scored with purged labels. The search
+> itself was not re-run. Current values and the old-to-new changes are in
+> [audit_history.md](audit_history.md).
+
 Reviewed 2026-09-08 at original revision 6bc4939. Original archives, prompts, saved replies and final tables are unchanged. The old replay table says all six archives reproduced under the old scoring code; that is historical recorded evidence, not a new replay under the corrected label policy.
 
 ## Measured comparison

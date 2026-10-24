@@ -1,0 +1,12 @@
+metric,value
+panel_rows,4874082
+panel_permnos,1107
+panel_ticker_symbols,1734
+panel_trading_days,6539
+panel_first_date,2000-01-03
+panel_last_date,2025-12-31
+panel_mean_names_per_date,745.4
+member_mean_names_per_date,501.7
+member_filtered_rows,3279854
+member_filtered_permnos,1107
+rows_with_split_adjustment,1397052

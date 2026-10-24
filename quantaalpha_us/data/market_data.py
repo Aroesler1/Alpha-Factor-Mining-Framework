@@ -8,8 +8,9 @@ def build_market_data_client(*, source: str = "auto") -> CRSPClient:
 
     This used to multiplex CRSP against an EODHD fallback. EODHD is gone: every
     call site the pipeline uses (daily bars, bulk daily bars, ticker mapping) is
-    served by CRSPClient, which additionally carries PERMNO identity, delisting
-    returns and point-in-time membership that a plain vendor EOD feed does not.
+    served by CRSPClient, which additionally carries PERMNO identity and
+    point-in-time membership that a plain vendor EOD feed does not. Delisting
+    returns are not queried.
 
     `source` is retained so existing callers and scripts keep working, but the
     only accepted values are "auto" and "crsp".

@@ -125,6 +125,9 @@ def main() -> None:
 
     universe = SP500Universe(str(membership_path), ticker_mapping_file=str(ticker_map_path))
     active = universe.get_members(as_of)
+    if not active:
+        raise RuntimeError(f"No active index members for {as_of.date()} in {membership_path}; "
+                           "refusing to generate signals without a universe")
 
     prev_signals = _load_table(output_path)
     previous_weights = None

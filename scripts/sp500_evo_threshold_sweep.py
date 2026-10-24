@@ -35,7 +35,7 @@ for _p in (str(US_ROOT), str(US_ROOT.parent)):
         sys.path.insert(0, _p)
 
 from quantaalpha_us.evo.backends import ReplayBackend  # noqa: E402
-from quantaalpha_us.evo.config import THRESHOLDS_PATH, EvoConfig, Schedule  # noqa: E402
+from quantaalpha_us.evo.config import THRESHOLDS_PATH, EvoConfig, config_from_manifest  # noqa: E402
 from quantaalpha_us.evo.persistence import RunStore  # noqa: E402
 from quantaalpha_us.evo.runner import EvolutionRunner  # noqa: E402
 from quantaalpha_us.evo.scoring import PanelScorer  # noqa: E402
@@ -45,6 +45,24 @@ from quantaalpha_us.llm.budget import RunBudget  # noqa: E402
 
 SUBTREE_GRID = (4, 5, 6)
 CORRELATION_GRID = (0.6, 0.7, 0.8)
+
+
+def base_config(manifest: dict) -> EvoConfig:
+    """The replayed run's own config (arm, seed, mode, feedback, schedule).
+
+    The per-round random streams are keyed on the arm name, so replaying under a
+    different name pairs the saved CROSSOVER replies with different parents.
+    """
+    return config_from_manifest(manifest)
+
+
+def describe_run(path: Path) -> str:
+    """A run path for the frozen JSON: repo-relative, never an absolute local path."""
+    resolved = Path(path).resolve()
+    try:
+        return str(resolved.relative_to(US_ROOT.resolve()))
+    except ValueError:
+        return resolved.name
 
 
 def main() -> int:
@@ -64,13 +82,11 @@ def main() -> int:
     manifest = source.manifest()
     if not manifest:
         raise SystemExit(f"{args.run} has no manifest; run that arm first")
-    rounds = int(manifest.get("config", {}).get("schedule", {}).get("rounds", Schedule.rounds))
-    seed = int(manifest.get("config", {}).get("seed", EvoConfig.seed))
-    print(f"replaying {args.run} (arm {manifest.get('config', {}).get('arm')}, "
-          f"{rounds} rounds, backend {manifest.get('backend')})")
+    base = base_config(manifest)
+    print(f"replaying {args.run} (arm {base.arm}, {base.schedule.rounds} rounds, "
+          f"backend {manifest.get('backend')})")
 
     bars = apply_membership_filter(pd.read_parquet(args.bars), args.membership)
-    base = EvoConfig(arm="sweep", seed=seed, schedule=Schedule(rounds=rounds))
     # one scorer, memoised: the same candidate stream is replayed nine times and
     # its fit-window metrics do not depend on the thresholds
     scorer = PanelScorer(bars, base, memoize=True)
@@ -143,7 +159,7 @@ def main() -> int:
         },
         "criterion": "archive top-20 equal-weight mean IC on the validation window, "
                      "ties broken toward the stricter gate",
-        "replayed_run": str(args.run),
+        "replayed_run": describe_run(args.run),
         "grid": rows,
         "source": "scripts/sp500_evo_threshold_sweep.py, frozen after this sweep",
     }

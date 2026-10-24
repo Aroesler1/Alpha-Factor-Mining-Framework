@@ -17,5 +17,10 @@ def adjust_comparisons(frame: pd.DataFrame) -> pd.DataFrame:
     result["holm_p"] = adjusted
     result["family_size"] = len(p)
     result["reject_holm_5pct"] = adjusted <= 0.05
-    result["evidence_status"] = "historical_labels_not_boundary_purged"
+    # a table that states its own provenance keeps it; the default describes the
+    # original run, whose selection labels were not boundary-purged
+    if "evidence_status" in frame.columns:
+        result = result[[c for c in result.columns if c != "evidence_status"] + ["evidence_status"]]
+    else:
+        result["evidence_status"] = "historical_labels_not_boundary_purged"
     return result

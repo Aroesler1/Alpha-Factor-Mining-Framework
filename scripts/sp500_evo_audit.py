@@ -44,7 +44,8 @@ def main():
         path.parent.mkdir(parents=True, exist_ok=True)
         table.to_csv(path, index=False)
     print(f"Verified {len(table)} published comparisons; "
-          f"{int(table.reject_holm_5pct.sum())} pass Holm at 5%. No holdout was rescored.")
+          f"{int(table.reject_holm_5pct.sum())} pass Holm at 5%. Read committed aggregates only; "
+          "no price data was read.")
 
 
 if __name__ == "__main__":

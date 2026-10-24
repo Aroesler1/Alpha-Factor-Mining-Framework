@@ -17,3 +17,12 @@ def label_end_dates(index: pd.DatetimeIndex, horizon: int = 1) -> pd.Series:
 def labels_known_by(index: pd.DatetimeIndex, cutoff, horizon: int = 1) -> pd.Series:
     """False also covers outcomes extending beyond the available calendar."""
     return label_end_dates(index, horizon).le(pd.Timestamp(cutoff))
+
+
+def rows_known_by(frame, cutoff, horizon: int = 1):
+    """Rows of a date-indexed IC frame or series whose labels end by `cutoff`.
+
+    Slicing on the signal date alone (`index <= cutoff`) keeps the last h + 1
+    signal dates, whose outcomes finish after the cutoff.
+    """
+    return frame.loc[labels_known_by(frame.index, cutoff, horizon).to_numpy()]

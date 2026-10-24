@@ -1,4 +1,4 @@
-> Updated scope, 2026-09-08: the original comparison below predates this repository's completed Part C evolutionary loop. Statements that evolution is absent describe the earlier one-shot study only. Current loop code is independently implemented; historical results have unpurged selection labels. See integrity_audit.md.
+> Updated scope, 2026-09-08: the original comparison below predates this repository's completed Part C evolutionary loop. Statements that evolution is absent describe the earlier one-shot study only. Current loop code is independently implemented; historical results have unpurged selection labels. See [integrity_audit.md](integrity_audit.md).
 
 # Provenance
 
@@ -11,12 +11,39 @@ The short answer: **no file in `quantaalpha_us/` is copied or adapted from upstr
 the code level.** What was inherited is architectural and conceptual, and is itemised in
 [Concept-level inheritance](#concept-level-inheritance) below.
 
+## Re-check against the public upstream repository (2026-10-23)
+
+The file-level comparison below used a local, partly rebranded copy of upstream and
+covered the 27 modules that existed at the time. It was repeated against a fresh
+shallow clone of the public repository (commit `b7ceb27`, 135 Python files) with
+[`scripts/provenance_upstream_compare.py`](../scripts/provenance_upstream_compare.py),
+this time covering all 118 Python files in `quantaalpha_us/` (including the later
+`evo/` package), `scripts/` and `tests/`, plus the 7 prompt templates in
+`configs/prompts/`. No local file exceeded 0.19 line-sequence similarity to any
+upstream file (the highest scores are short `__init__.py` files). The longest run of
+consecutive shared normalised lines is three, and those three are
+`from __future__ import annotations`, `import json` and `import re`. Every other shared
+line is an import, a method signature such as `def to_dict(self) -> dict[str, Any]:`,
+or boilerplate such as `if __name__ == "__main__":`. No prompt text is shared.
+
+To repeat it:
+
+```bash
+git clone --depth 1 https://github.com/QuantaAlpha/QuantaAlpha /tmp/qa_upstream
+python scripts/provenance_upstream_compare.py --upstream /tmp/qa_upstream
+```
+
+Upstream declares the MIT license in its `pyproject.toml` classifiers and README
+badge; that commit has no LICENSE file. No upstream code or prompt text is included
+here, so this repository does not reproduce upstream's license notice. The summary
+and citation at the end of this document credit the design.
+
 ## Method
 
 Comparison was mechanical, not from memory:
 
 1. Every `.py` file in `quantaalpha_us/` (27 files) was compared against every `.py`
-   file in the upstream package tree (159 files) ;  4,293 pairwise comparisons.
+   file in the upstream package tree (159 files), 4,293 pairwise comparisons.
 2. Both sides were normalised before comparison: blank lines and comments stripped,
    whitespace collapsed, and package-name differences (`quantaalpha_us` vs
    `quantaalpha`) rewritten so that naming alone could not depress the score.
@@ -32,7 +59,7 @@ The upstream tree used for this comparison was a local working copy at
 `../QuantaAlpha_CN`. That copy is **not pristine**: it carries an earlier local rebrand
 (39 files contain substituted project names) and has no git history to diff against.
 The name substitutions were normalised away in step 2, and the comparison's conclusion
-is one of *absence* of overlap, which a rebrand of this kind cannot manufacture ;  string
+is one of *absence* of overlap, which a rebrand of this kind cannot manufacture: string
 substitution can hide a matching identifier, not 500 matching lines of logic. The
 numbers below should still be treated as measured against that working copy rather than
 against an untouched upstream checkout. To re-verify against pristine upstream:
@@ -85,7 +112,7 @@ the same language typically land in this range purely on shared imports and idio
 ### The shared-basename files, examined directly
 
 Four non-`__init__` files share a basename with an upstream file. In every case the
-basename is the only thing shared ;  note that for three of the four, the upstream file
+basename is the only thing shared. Note that for three of the four, the upstream file
 of the same name is not even the closest match in the tree.
 
 | Pair | Lines US / upstream | Intersecting non-blank lines |
@@ -97,14 +124,14 @@ of the same name is not even the closest match in the tree.
 
 The intersecting lines are language boilerplate, not logic. In full:
 
-- `universe.py` ;  `from __future__ import annotations`, `from dataclasses import dataclass`,
+- `universe.py`: `from __future__ import annotations`, `from dataclasses import dataclass`,
   `from pathlib import Path`, `import pandas as pd`, `@dataclass`, `if not path.exists():`, `)`
-- `walk_forward.py` ;  the same imports and `@dataclass`, plus the four window-boundary
+- `walk_forward.py`: the same imports and `@dataclass`, plus the four window-boundary
   field names `train_start` / `train_end` / `test_start` / `test_end` and their
   constructor keywords. These are the standard vocabulary for a walk-forward split, and
   the surrounding 500+ lines share nothing.
-- `market_data.py` ;  `from __future__ import annotations`, and nothing else.
-- `trading/risk.py` ;  `from __future__ import annotations`,
+- `market_data.py`: `from __future__ import annotations`, and nothing else.
+- `trading/risk.py`: `from __future__ import annotations`,
   `from dataclasses import dataclass, field`, `@dataclass`, and three risk-config fields
   that coincide in both name and default: `min_positions: int = 5`,
   `min_cash_pct: float = 0.02`, `flatten_on_kill: bool = True`. This is the single
@@ -131,7 +158,7 @@ sits in:
   largely the common Alpha101/Qlib vocabulary that predates both projects; the
   implementations behind them here are independent, and the semantics differ (all
   time-series operators in this repo use strict windows, so warm-up periods are NaN).
-- **The LLM-ideation framing** ;  that a frontier model is a hypothesis generator whose
+- **The LLM-ideation framing**: that a frontier model is a hypothesis generator whose
   output is worthless until it survives an evaluation harness it cannot influence.
 
 **Rebuilt from scratch, with no upstream counterpart:**
@@ -153,8 +180,8 @@ sits in:
   (`llm/budget.py`).
 - **Alpaca execution path and risk controls** (`trading/`).
 
-**Not carried over:** upstream's evolutionary search itself ;  the trajectory-level
-mutation and crossover operators that are the paper's actual contribution ;  has no
+**Not carried over:** upstream's evolutionary search itself (the trajectory-level
+mutation and crossover operators that are the paper's actual contribution) has no
 counterpart here. This repo does single-shot ideation plus selection. It is a
 descendant of QuantaAlpha's scaffolding, not a reimplementation of its algorithm.
 
@@ -170,3 +197,41 @@ No prompt text is shared between the two.
 The scan is a short script; the normalisation rules in [Method](#method) are the whole of
 it. Re-running it against a pristine upstream clone is the recommended way to audit this
 document.
+
+## Summary previously kept in the README
+
+This project descends from **QuantaAlpha**: [QuantaAlpha/QuantaAlpha](https://github.com/QuantaAlpha/QuantaAlpha), MIT License, paper: *QuantaAlpha: An Evolutionary Framework for LLM-Driven Alpha Mining* ([arXiv:2602.07085](https://arxiv.org/abs/2602.07085)). QuantaAlpha targets the China A-share market; this is a rewrite for US equities.
+
+**Kept from QuantaAlpha:**
+
+- The **staged research pipeline** concept: ideate, express, sanitise, evaluate, gate, with the LLM confined to the ideation stage and every stage after it mechanical and auditable.
+- The **formulaic-alpha DSL** as the LLM's output contract, rather than free-form generated code. 22 of this repo's 32 operator names (`TS_MEAN`, `RANK`, `DELAY`, `TS_CORR`, `ZSCORE`, …) also appear in upstream's function library, though most are the common Alpha101/Qlib vocabulary predating both projects.
+- The **LLM-ideation framing**: a frontier model is a hypothesis generator whose output is worthless until it survives an evaluation harness it cannot influence.
+
+**Rebuilt here, with no upstream counterpart:** the data layer (CRSP via WRDS, replacing Qlib/A-share); the point-in-time S&P 500 membership filter joined on PERMNO rather than ticker; rank-space deduplication of candidate signals; the out-of-sample holdout with frozen in-sample sign; the sanitizer's identifier and arity checks; the Claude Code LLM backend; and the append-only, content-addressed experiment trace.
+
+**Search implementation:** the original study used single-shot ideation. The completed Part C adds this repository's own evolutionary loop, with typed formula edits, archive selection and GP controls. It is not a code-level reproduction of upstream's trajectory search.
+
+At the code level the two share nothing: a file-by-file comparison of all 27 modules in `quantaalpha_us/` against all 159 upstream modules found no file above 0.17 similarity, and the four files that share a basename with an upstream file share only imports and `@dataclass` decorators. The full table, the method, and its caveats are in this document.
+
+### Comparing IC against the paper
+
+Upstream v1 reported CSI 300 IC 0.1501, ARR 27.75% and MDD 7.98%. Its [v3 dated 2026-05-18](https://arxiv.org/html/2602.07085v3) reports IC 0.0472, ARR 4.68% and MDD 11.8%; S&P 500 transfer cumulative excess return changes from about 137% to 19.1%. These versioned literature values are recorded in [reports/literature_versions.csv](../reports/literature_versions.csv).
+
+Different universes, costs, IC conventions and search procedures prevent a direct performance ranking. There is no universal IC cutoff for a useful factor independent of its horizon, turnover and exposures. The relevant comparisons here are the published and random controls under the same local protocol.
+
+### Citation
+
+If you use this work, please cite the upstream paper:
+
+```bibtex
+@misc{han2026quantaalphaevolutionaryframeworkllmdriven,
+      title={QuantaAlpha: An Evolutionary Framework for LLM-Driven Alpha Mining},
+      author={Jun Han and Shuo Zhang and Wei Li and Zhi Yang and Yifan Dong and Tu Hu and Jialuo Yuan and Xiaomin Yu and Yumo Zhu and Fangqi Lou and Xin Guo and Zhaowei Liu and Tianyi Jiang and Ruichuan An and Jingping Liu and Biao Wu and Rongze Chen and Kunyi Wang and Yifan Wang and Sen Hu and Xinbing Kong and Liwen Zhang and Ronghao Chen and Huacan Wang},
+      year={2026},
+      eprint={2602.07085},
+      archivePrefix={arXiv},
+      primaryClass={q-fin.ST},
+      url={https://arxiv.org/abs/2602.07085},
+}
+```

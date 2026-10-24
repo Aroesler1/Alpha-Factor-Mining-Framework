@@ -79,13 +79,49 @@ def _load_latest_signals(path: Path) -> pd.DataFrame:
     return signals
 
 
+def resolve_signal_date(signals: pd.DataFrame, as_of: str | None) -> pd.Timestamp:
+    """The date the signals are for, refusing a file that is stale for `as_of`.
+
+    `_load_latest_signals` keeps the latest date in the file. When the caller
+    names the run date, a file whose latest signals are older is stale (signal
+    generation failed or did not run) and must not be traded.
+    """
+    file_date = None
+    if "date" in signals.columns and signals["date"].notna().any():
+        file_date = pd.Timestamp(signals["date"].max()).normalize()
+    if as_of:
+        target = pd.Timestamp(as_of).normalize()
+        if file_date is not None and file_date != target:
+            raise RuntimeError(f"Signal file is for {file_date.date()}, not {target.date()}; "
+                               "refusing to trade stale signals")
+        return target
+    if file_date is not None:
+        return file_date
+    # naive UTC date, comparable with the naive dates in the bar files
+    return pd.Timestamp.now(tz="UTC").tz_localize(None).normalize()
+
+
+def enforce_pre_trade(report, allow_risk_fail: bool) -> None:
+    """Raise unless the checks passed or only bypassable checks failed under the flag."""
+    if report.passed:
+        return
+    hard = report.hard_failures()
+    if hard or not allow_risk_fail:
+        raise RuntimeError(f"Pre-trade risk checks failed"
+                           f"{' (not bypassable: ' + ', '.join(hard) + ')' if hard else ''}: "
+                           f"{json.dumps(report.to_dict(), indent=2)}")
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Portable one-shot rebalance for US project using Alpaca REST")
     parser.add_argument("--config", default="configs/paper_sp500.yaml")
     parser.add_argument("--dry-run", action="store_true", help="Override config and avoid submitting orders")
-    parser.add_argument("--ignore-pause", action="store_true", help="Ignore PAUSE flag")
+    parser.add_argument("--ignore-pause", action="store_true",
+                        help="Ignore the PAUSE flag (never the LOCKOUT flag)")
     parser.add_argument("--min-trade-dollars", type=float, default=None)
-    parser.add_argument("--allow-risk-fail", action="store_true", help="Continue even if pre-trade checks fail")
+    parser.add_argument("--allow-risk-fail", action="store_true",
+                        help="Continue when bypassable pre-trade checks fail; the kill-switch "
+                             "and universe checks are never bypassed")
     parser.add_argument("--membership-file", default="data/us_equities/reference/sp500_membership_daily.parquet")
     parser.add_argument("--bars-file", default="data/us_equities/processed/daily_bars.parquet")
     parser.add_argument("--as-of", default=None, help="Optional signal date override (YYYY-MM-DD)")
@@ -116,18 +152,17 @@ def main() -> None:
     if signals.empty:
         raise RuntimeError("No positive-weight signals available for trade run")
 
-    if args.as_of:
-        signal_date = pd.Timestamp(args.as_of).normalize()
-    elif "date" in signals.columns and signals["date"].notna().any():
-        signal_date = pd.Timestamp(signals["date"].max()).normalize()
-    else:
-        signal_date = pd.Timestamp.utcnow().normalize()
+    signal_date = resolve_signal_date(signals, args.as_of)
 
     membership_file = resolve_from_us_root(args.membership_file, US_ROOT)
-    active_universe: set[str] = set()
-    if membership_file.exists():
-        universe = SP500Universe(str(membership_file))
-        active_universe = set(universe.get_members(signal_date))
+    if not membership_file.exists():
+        raise RuntimeError(f"Membership file not found: {membership_file}; refusing to trade "
+                           "without a universe check")
+    universe = SP500Universe(str(membership_file))
+    active_universe = set(universe.get_members(signal_date))
+    if not active_universe:
+        raise RuntimeError(f"No active index members for {signal_date.date()} in "
+                           f"{membership_file}; refusing to trade")
 
     bars_file = resolve_from_us_root(args.bars_file, US_ROOT)
     latest_data_date: pd.Timestamp | None = None
@@ -218,14 +253,14 @@ def main() -> None:
         equity=equity,
         buying_power=buying_power,
         risk_config=risk_cfg,
-        active_universe=active_universe if active_universe else None,
+        active_universe=active_universe,
         latest_data_date=latest_data_date,
         as_of_date=signal_date,
-        kill_switch_engaged=lockout_flag.exists() or pause_flag.exists(),
+        # --ignore-pause overrides the PAUSE flag only; LOCKOUT always counts
+        kill_switch_engaged=lockout_flag.exists() or (pause_flag.exists() and not args.ignore_pause),
         is_trading_day=True,
     )
-    if not pre_trade.passed and not args.allow_risk_fail:
-        raise RuntimeError(f"Pre-trade risk checks failed: {json.dumps(pre_trade.to_dict(), indent=2)}")
+    enforce_pre_trade(pre_trade, args.allow_risk_fail)
 
     responses: list[dict[str, Any]] = []
     if not dry_run:

@@ -35,7 +35,7 @@ for _p in (str(US_ROOT), str(US_ROOT.parent)):
 
 from quantaalpha_us.evo.archive import load_archive  # noqa: E402
 from quantaalpha_us.evo.backends import ReplayBackend  # noqa: E402
-from quantaalpha_us.evo.config import EvoConfig, Schedule  # noqa: E402
+from quantaalpha_us.evo.config import EvoConfig  # noqa: E402
 from quantaalpha_us.evo.persistence import RunStore  # noqa: E402
 from quantaalpha_us.evo.runner import EvolutionRunner  # noqa: E402
 from quantaalpha_us.evo.scoring import PanelScorer  # noqa: E402
@@ -51,28 +51,11 @@ def config_for(arm: str, store: RunStore) -> EvoConfig:
     thresholds it actually used, or the replay is a different experiment that
     happens to read the same replies.
     """
-    manifest = store.manifest()
-    saved = manifest.get("config", {})
-    schedule_fields = set(Schedule.__dataclass_fields__)
-    schedule = Schedule(**{k: v for k, v in (saved.get("schedule") or {}).items()
-                           if k in schedule_fields})
     from dataclasses import replace
 
-    from quantaalpha_us.evo.config import Gates
+    from quantaalpha_us.evo.config import config_from_manifest
 
-    gate_fields = set(Gates.__dataclass_fields__)
-    gates = Gates(**{k: v for k, v in (saved.get("gates") or {}).items() if k in gate_fields})
-    base = EvoConfig(
-        arm=arm,
-        model=saved.get("model", "replay"),
-        effort=saved.get("effort", "n/a"),
-        seed=int(saved.get("seed", EvoConfig.seed)),
-        mode=saved.get("mode", "loop"),
-        feedback_mode=saved.get("feedback_mode", "full"),
-        schedule=schedule,
-        gates=gates,
-    )
-    return replace(base)
+    return replace(config_from_manifest(store.manifest()), arm=arm)
 
 
 def main() -> int:

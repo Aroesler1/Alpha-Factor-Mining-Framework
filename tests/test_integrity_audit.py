@@ -95,7 +95,8 @@ def test_completed_comparisons_reproduce_without_bars():
     from scripts.sp500_evo_audit import build
     result = build()
     assert len(result) == 5
-    assert result.holm_p.min() == pytest.approx(.235)
+    committed = pd.read_csv("reports/evo_comparison_audit.csv")
+    assert result.holm_p.tolist() == pytest.approx(committed.holm_p.tolist())
 
 
 def test_fundamentals_provenance_report_reconstructs_from_sanitized_evidence():

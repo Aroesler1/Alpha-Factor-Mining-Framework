@@ -14,7 +14,19 @@ A reproduction on `crsp.dsf` should expect small differences for that reason alo
 sibling trend-following repo (`VOO_Backtest`) is on the legacy tape, so figures do not
 cross-check between the two.
 
-Sample as used: 4,874,082 rows, 1,734 symbols, 2000-01-03 to 2025-12-31, with point-in-time S&P 500 membership and GICS sector reference data.
+Sample as used: 4,874,082 daily rows for 1,107 securities (CRSP PERMNOs) that traded
+under 1,734 ticker symbols, 6,539 trading days from 2000-01-03 to 2025-12-31. The
+point-in-time S&P 500 membership filter keeps 3,279,854 of those rows. Counts are in
+[reports/panel_summary.csv](reports/panel_summary.csv), written by
+`scripts/sp500_panel_summary.py`. GICS sector reference data is used by the backtest.
+
+**Price adjustment.** Closes are split-adjusted with CRSP's cumulative price factor.
+CRSP opens, highs and lows are raw, so the factor code rescales them by the same day's
+`adj_close / close` (1,397,052 rows have a factor other than 1). Volume stays in raw
+shares. Factor panels are keyed by PERMNO, so a ticker change does not break a series
+and a reused ticker does not join two companies. Results committed before 2026-10 used
+raw opens, highs and lows and ticker-keyed series; see
+[docs/audit_history.md](docs/audit_history.md).
 
 ## What is committed
 

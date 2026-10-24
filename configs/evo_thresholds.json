@@ -87,7 +87,7 @@
       "top20_validation_ic": 0.006908788284045791
     }
   ],
-  "replayed_run": "/private/tmp/claude-501/-Users-alex-Desktop-Berkeley-MFE-Kairos-Industry-Project/b8796d8f-a7b5-473d-b4bb-8687aa87b7c7/scratchpad/evo_pre/gp-loop",
+  "replayed_run": "evo_pre/gp-loop (a pre-run GP arm kept outside the repository; not committed)",
   "source": "scripts/sp500_evo_threshold_sweep.py, frozen after this sweep",
   "tied_cells": 2
 }

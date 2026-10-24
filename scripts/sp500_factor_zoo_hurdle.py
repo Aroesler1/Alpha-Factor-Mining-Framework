@@ -41,6 +41,7 @@ for _p in (str(US_ROOT), str(US_ROOT.parent)):
         sys.path.insert(0, _p)
 
 from quantaalpha_us.factors.ic_panel import LAGGED, load_ic_table  # noqa: E402
+from quantaalpha_us.factors.label_clock import rows_known_by  # noqa: E402
 from quantaalpha_us.factors.multiple_testing import (  # noqa: E402
     DEFAULT_BLOCK,
     DEFAULT_NW_LAG,
@@ -80,7 +81,8 @@ def main() -> int:
     pool = pd.read_csv(zoo / "pool.csv")
     ic_all = table.ic[(LAGGED, 1)]
 
-    train = ic_all.loc[ic_all.index <= pd.Timestamp(args.train_end)]
+    # training rows must have their one-day outcome finished by the cut
+    train = rows_known_by(ic_all, args.train_end)
     hold = ic_all.loc[ic_all.index > pd.Timestamp(args.train_end)]
     print(f"training window {train.index.min().date()} -> {train.index.max().date()} "
           f"({len(train):,} days); holdout {hold.index.min().date()} -> "
@@ -133,15 +135,33 @@ def main() -> int:
     hold_matrix = hold[members["expression"].tolist()]
     oriented_hold = hold_matrix * sign
     out["mean_ic_holdout"] = oriented_hold.mean().to_numpy()
-    out["nw_t_holdout"] = newey_west_tstats(
-        oriented_hold.fillna(0.0).to_numpy(), lag=args.lag
-    )
+    # per factor on its own observed days; filling gaps with zero would count a
+    # missing day as a zero IC and disagree with mean_ic_holdout
+    out["nw_t_holdout"] = [
+        float(newey_west_tstats(col.dropna().to_numpy()[:, None], lag=args.lag)[0])
+        if col.notna().sum() > args.lag + 1 else np.nan
+        for _, col in oriented_hold.items()
+    ]
     out["holdout_days"] = hold_matrix.notna().sum().to_numpy()
     out["sign_held"] = out["mean_ic_holdout"] > 0
     out["retention"] = out["mean_ic_holdout"] / (out["mean_ic_train"] * sign)
 
     zoo.mkdir(parents=True, exist_ok=True)
     out.to_csv(zoo / "zoo_hurdle.csv", index=False)
+    # the pool-level numbers the report quotes, so they have a committed source
+    finite = out["rw_critical"][np.isfinite(out["rw_critical"])]
+    pd.DataFrame([
+        ("training_window", f"{matrix.index.min().date()} to {matrix.index.max().date()}"),
+        ("complete_case_training_days", len(matrix)),
+        ("holdout_window", f"{hold.index.min().date()} to {hold.index.max().date()}"),
+        ("random_max_critical_abs_t", verdict.random_max_critical),
+        ("bh_p_threshold", verdict.bh_threshold),
+        ("romano_wolf_critical_first_step", float(finite.max()) if len(finite) else np.nan),
+        ("romano_wolf_critical_last_step", float(finite.min()) if len(finite) else np.nan),
+        ("max_abs_iid_t", float(out["iid_t_train"].abs().max())),
+        ("max_abs_nw_t", float(out["nw_t_train"].abs().max())),
+        ("median_abs_iid_over_nw_t", float((out["iid_t_train"].abs() / out["nw_t_train"].abs()).median())),
+    ], columns=["metric", "value"]).to_csv(zoo / "zoo_hurdle_summary.csv", index=False)
 
     # ---- report ----------------------------------------------------------
     print("\n" + "=" * 100)

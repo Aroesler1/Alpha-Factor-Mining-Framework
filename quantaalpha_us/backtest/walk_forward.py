@@ -167,6 +167,7 @@ class WalkForwardRunner:
         train_end_target = train_start + pd.DateOffset(months=self.initial_train_months)
         fold_id = 0
 
+        last_test_end: Optional[pd.Timestamp] = None
         while True:
             train_end = self._nearest_on_or_before(dates, pd.Timestamp(train_end_target))
             if train_end is None:
@@ -181,6 +182,12 @@ class WalkForwardRunner:
             test_start = self._nearest_on_or_after(dates, valid_end + pd.offsets.BDay(1))
             if test_start is None:
                 break
+            if last_test_end is not None and test_start <= last_test_end:
+                # test windows must not overlap, or the shared days are counted
+                # twice in Sharpe, drawdown and the deflated Sharpe gate
+                test_start = self._shift_trading_days(dates, last_test_end, 1)
+                if test_start is None:
+                    break
             test_end = self._nearest_on_or_before(dates, test_start + pd.DateOffset(months=self.test_months))
             if test_end is None or test_end <= test_start:
                 break
@@ -197,13 +204,14 @@ class WalkForwardRunner:
                 )
             )
             fold_id += 1
+            last_test_end = test_end
 
+            # advance the calendar target itself; stepping from the snapped
+            # train_end let the windows drift earlier fold by fold
             shift = pd.DateOffset(months=self.test_months)
-            if self.expanding_window:
-                train_end_target = train_end + shift
-            else:
+            if not self.expanding_window:
                 train_start = self._nearest_on_or_after(dates, train_start + shift) or train_start
-                train_end_target = train_end + shift
+            train_end_target = pd.Timestamp(train_end_target) + shift
 
             if test_end >= pd.Timestamp(dates[-1]).normalize():
                 break
@@ -242,18 +250,37 @@ class WalkForwardRunner:
                 work.loc[:, col] = pd.to_numeric(work[col], errors="coerce")
         if "adj_close" not in work.columns:
             work = work.assign(adj_close=work["close"])
+        # CRSP opens are raw while adj_close is split-adjusted. Entry and exit
+        # prices, and the value of shares carried across days, must be on the
+        # adjusted scale or a split books a fake return of the split ratio.
+        ratio = (work["adj_close"] / work["close"]).where(lambda r: (r > 0) & r.notna())
+        work = work.assign(trade_open=(work["open"] * ratio).where(ratio.notna(), work["open"]))
         work = work.dropna(subset=["date", "symbol", "open", "close"])
         work = work.sort_values(["date", "symbol"]).reset_index(drop=True)
         return work
 
     @staticmethod
+    def _with_trade_prices(bars: pd.DataFrame) -> pd.DataFrame:
+        """Bars with `trade_open` and `adj_close`, for frames that skipped `_normalize_bars`."""
+        if bars.empty or "symbol" not in bars.columns:
+            return pd.DataFrame(columns=["symbol", "trade_open", "adj_close"])
+        out = bars
+        if "trade_open" not in out.columns:
+            out = out.assign(trade_open=out["open"])
+        if "adj_close" not in out.columns:
+            out = out.assign(adj_close=out["close"] if "close" in out.columns else out["trade_open"])
+        return out
+
+    @classmethod
     def _open_return_for_symbols(
+        cls,
         bars_entry: pd.DataFrame,
         bars_exit: pd.DataFrame,
         symbols: list[str],
     ) -> pd.DataFrame:
-        e = bars_entry[bars_entry["symbol"].isin(symbols)][["symbol", "open"]].rename(columns={"open": "open_entry"})
-        x = bars_exit[bars_exit["symbol"].isin(symbols)][["symbol", "open"]].rename(columns={"open": "open_exit"})
+        bars_entry, bars_exit = cls._with_trade_prices(bars_entry), cls._with_trade_prices(bars_exit)
+        e = bars_entry[bars_entry["symbol"].isin(symbols)][["symbol", "trade_open"]].rename(columns={"trade_open": "open_entry"})
+        x = bars_exit[bars_exit["symbol"].isin(symbols)][["symbol", "trade_open"]].rename(columns={"trade_open": "open_exit"})
         merged = e.merge(x, on="symbol", how="inner")
         merged = merged[(merged["open_entry"] > 0) & (merged["open_exit"] > 0)]
         merged = merged.assign(ret=merged["open_exit"] / merged["open_entry"] - 1.0)
@@ -276,10 +303,25 @@ class WalkForwardRunner:
         if snapshot.empty:
             return pd.DataFrame(), {}, {}, 0.0, 0.0, 0.0
         snapshot = snapshot.drop_duplicates(subset=["symbol"]).copy()
-        entry = bars_entry[["symbol", "open"]].rename(columns={"open": "entry_open"}).drop_duplicates(subset=["symbol"])
-        exit_ = bars_exit[["symbol", "open"]].rename(columns={"open": "exit_open"}).drop_duplicates(subset=["symbol"])
-        context = snapshot[["symbol", "adv20", "vol_21d"]].merge(entry, on="symbol", how="inner").merge(exit_, on="symbol", how="inner")
+        bars_entry = self._with_trade_prices(bars_entry)
+        bars_exit = self._with_trade_prices(bars_exit)
+        entry = (bars_entry[["symbol", "trade_open", "adj_close"]]
+                 .rename(columns={"trade_open": "entry_open", "adj_close": "entry_close"})
+                 .drop_duplicates(subset=["symbol"]))
+        exit_ = (bars_exit[["symbol", "trade_open"]].rename(columns={"trade_open": "exit_open"})
+                 .drop_duplicates(subset=["symbol"]))
+        # Whether a name still trades at the exit open is not known when the
+        # position is opened, so the exit bar must not decide what is held.
+        # A name with no exit bar (delisted or halted) is marked at its
+        # entry-day close; the panel carries no delisting return.
+        context = (snapshot[["symbol", "adv20", "vol_21d"]]
+                   .merge(entry, on="symbol", how="inner")
+                   .merge(exit_, on="symbol", how="left"))
+        missing_exit = ~(pd.to_numeric(context["exit_open"], errors="coerce") > 0)
+        context = context.assign(exit_open=pd.to_numeric(context["exit_open"], errors="coerce")
+                                 .where(~missing_exit, context["entry_close"]))
         context = context[(context["entry_open"] > 0) & (context["exit_open"] > 0)].copy()
+        context = context.drop(columns=["entry_close"])
         if context.empty:
             return pd.DataFrame(), {}, {}, 0.0, 0.0, 0.0
 
@@ -303,9 +345,9 @@ class WalkForwardRunner:
         forced_liquidations: set[str] = set()
         if previous_shares and not bars_entry.empty:
             entry_px_map = {
-                str(r.symbol).upper(): float(r.open)
-                for r in bars_entry[["symbol", "open"]].itertuples(index=False)
-                if pd.notna(r.open) and float(r.open) > 0
+                str(r.symbol).upper(): float(r.trade_open)
+                for r in bars_entry[["symbol", "trade_open"]].itertuples(index=False)
+                if pd.notna(r.trade_open) and float(r.trade_open) > 0
             }
             extra_rows = []
             for held_sym, held_shares in previous_shares.items():
@@ -510,7 +552,7 @@ class WalkForwardRunner:
                 mom_ret = float("nan")
                 latest = bars_by_date.get(pd.Timestamp(as_of).normalize(), pd.DataFrame())
                 if not latest.empty and "mom_252" in latest.columns:
-                    latest = latest[["symbol", "mom_252"]].dropna()
+                    latest = latest[latest["symbol"].isin(active)][["symbol", "mom_252"]].dropna()
                     if not latest.empty:
                         top = latest.nlargest(self.signal_config.top_k, "mom_252")["symbol"].astype(str).tolist()
                         top_rets = self._open_return_for_symbols(bars_entry, bars_exit, top)

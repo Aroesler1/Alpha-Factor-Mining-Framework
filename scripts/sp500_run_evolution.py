@@ -12,9 +12,14 @@
     python scripts/sp500_run_evolution.py --arm sonnet5-loop --backend claude \
         --model claude-sonnet-5 --effort max --budget 200
 
-    # continue after a subscription cap, or re-derive a run from its saved replies
+    # continue after a subscription cap
     python scripts/sp500_run_evolution.py --arm sonnet5-loop --backend claude --resume
-    python scripts/sp500_run_evolution.py --arm sonnet5-loop --replay data/evo_runs/sonnet5-loop
+
+    # re-derive a run from its saved replies into a separate directory; the
+    # replay takes its config (arm name, seed, mode, feedback, gates) from the
+    # source run's manifest
+    python scripts/sp500_run_evolution.py --arm sonnet5-loop-replay \
+        --replay data/evo_runs/sonnet5-loop --runs-dir /tmp/evo_replays
 
 Arms differ only in the backend and two flags. Gates, fitness, archive, islands,
 windows and the round schedule are shared, which is the whole point: a
@@ -42,7 +47,7 @@ from quantaalpha_us.evo.backends import (  # noqa: E402
     ReplayBackend,
     dry_run_commands,
 )
-from quantaalpha_us.evo.config import EvoConfig, Schedule  # noqa: E402
+from quantaalpha_us.evo.config import EvoConfig, Schedule, config_from_manifest  # noqa: E402
 from quantaalpha_us.evo.persistence import RunStore, token_totals  # noqa: E402
 from quantaalpha_us.evo.report import write_run_report  # noqa: E402
 from quantaalpha_us.evo.runner import EvolutionRunner  # noqa: E402
@@ -106,6 +111,14 @@ def main() -> int:
         effort=(args.effort if args.backend == "claude" else "n/a"),
         seed=args.seed, schedule=schedule, mode=args.mode, feedback_mode=args.feedback,
     )
+    if args.replay:
+        source = Path(args.replay).resolve()
+        if source == (Path(args.runs_dir) / args.arm).resolve():
+            raise SystemExit("--replay must write to a different directory than its source; "
+                             "pass another --arm or --runs-dir")
+        # the replay must run under the source run's own config, or its saved
+        # replies are paired with different parents
+        config = config_from_manifest(RunStore(source).manifest())
     if args.mode == "one_shot":
         print(f"one-shot arm: {len(config.islands)} calls asking for "
               f"{config.one_shot_candidates} candidates each, matching the "

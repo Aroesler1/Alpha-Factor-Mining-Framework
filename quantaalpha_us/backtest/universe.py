@@ -37,7 +37,15 @@ class SP500Universe:
             date: group[group["active"]]["symbol"].tolist()
             for date, group in self.membership.groupby("date", sort=True)
         }
-        self.ticker_map = self._load_ticker_mapping(ticker_mapping_file)
+        # A CRSP-built membership file (it carries permno) already holds the
+        # ticker that was valid on each date, which is what the bars carry.
+        # The ticker map is undated and keyed by old symbol, so applying it
+        # would rename a member to a ticker it only adopted later (dropping it
+        # from the universe before the rename, which is look-ahead) and would
+        # merge companies that reused a ticker. It is applied only to
+        # membership files without permno.
+        self.dated_symbols = "permno" in self.membership.columns
+        self.ticker_map = {} if self.dated_symbols else self._load_ticker_mapping(ticker_mapping_file)
 
     @staticmethod
     def _load_membership(path: Path) -> pd.DataFrame:

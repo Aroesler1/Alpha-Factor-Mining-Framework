@@ -266,3 +266,15 @@ def test_resuming_a_fully_saved_run_makes_no_model_calls_at_all(tmp_path, bars, 
     result = resumed.run(resume=True)
     assert resumed.reused_calls > 0
     assert result.archive.snapshot() == original, "resume did not reproduce the archive"
+
+
+def test_threshold_sweep_replays_under_the_source_arm_name():
+    from scripts.sp500_evo_threshold_sweep import base_config, describe_run
+
+    manifest = {"config": {"arm": "gp-loop", "seed": 7, "mode": "loop",
+                           "feedback_mode": "scalar", "schedule": {"rounds": 5}}}
+    config = base_config(manifest)
+    assert (config.arm, config.seed, config.feedback_mode) == ("gp-loop", 7, "scalar")
+    assert config.schedule.rounds == 5
+    # the frozen JSON never records an absolute local path
+    assert not describe_run("/private/tmp/somewhere/evo_pre/gp-loop").startswith("/")

@@ -26,7 +26,7 @@ Four corrections, deliberately not one:
   Bonferroni-style bound does. Two factors that are the same idea should not
   cost the same as two independent tests, and here they do not.
 
-Plus the empirical null the brief actually asks for: the distribution of the
+Plus the empirical null that answers the question directly: the distribution of the
 MAXIMUM |t| over the random-grammar pool under a circular block bootstrap. That
 is the honest bar. It is not a correction applied to a factor; it is the answer
 to "how large a |t| does a search of this size and this autocorrelation produce

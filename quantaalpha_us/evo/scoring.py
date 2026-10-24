@@ -350,22 +350,47 @@ class PanelScorer:
         return ic * sign
 
 
+def signed_centred_ranks(signal: pd.DataFrame, sign: int = 1) -> pd.DataFrame:
+    """Cross-sectional percentile ranks, oriented by `sign` and demeaned per date."""
+    ranks = signal.rank(axis=1, pct=True) * sign
+    return ranks.sub(ranks.mean(axis=1), axis=0)
+
+
+def combined_rank_signal(
+    signals: Sequence[pd.DataFrame], signs: Sequence[int],
+    weights: Sequence[float] | None = None,
+) -> pd.DataFrame:
+    """One combined signal from a factor set: weighted sum of centred, signed ranks.
+
+    Each factor's ranks are demeaned per date before they are added, and a name
+    a factor does not cover contributes zero (neutral) for that factor. Averaging
+    raw signed ranks over only the factors present instead gives a name that
+    lacks a negative-sign factor a level boost unrelated to any signal, because
+    raw ranks of a negative-sign factor sit in [-1, 0). The ridge weights are fit
+    on the same centred ranks, so equal-weight and ridge combinations share one
+    definition. A name no factor covers stays missing.
+    """
+    total = None
+    present = None
+    for i, (signal, sign) in enumerate(zip(signals, signs)):
+        weight = 1.0 if weights is None else float(weights[i])
+        centred = signed_centred_ranks(signal, sign)
+        contribution = centred.fillna(0.0) * weight
+        covered = centred.notna().astype(float)
+        total = contribution if total is None else total.add(contribution, fill_value=0.0)
+        present = covered if present is None else present.add(covered, fill_value=0.0)
+    if total is None:
+        return pd.DataFrame()
+    return total.where(present > 0)
+
+
 def equal_weight_rank_average(
     scorer: PanelScorer, expressions: Sequence[str], signs: Sequence[int],
 ) -> pd.DataFrame:
-    """The combined signal of a factor set: mean of sign-corrected daily ranks.
+    """The combined signal of a factor set, equal weights (see `combined_rank_signal`).
 
     This is the "number that matters" in the final table -- a portfolio built
     from the whole surviving set rather than the best single expression -- so it
     lives next to the scorer both arms share.
     """
-    total = None
-    count = None
-    for expr, sign in zip(expressions, signs):
-        ranks = scorer.evaluate(expr).rank(axis=1, pct=True) * sign
-        total = ranks if total is None else total.add(ranks, fill_value=0.0)
-        present = ranks.notna().astype(float)
-        count = present if count is None else count.add(present, fill_value=0.0)
-    if total is None:
-        return pd.DataFrame()
-    return total / count.replace(0, np.nan)
+    return combined_rank_signal([scorer.evaluate(e) for e in expressions], signs)

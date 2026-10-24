@@ -617,8 +617,14 @@ class EvolutionRunner:
                         parents: Sequence[str]) -> GateOutcome:
         if operator == ops.MUTATE and parents:
             return self.gates.mutation_is_local(expression, parents[0])
-        if operator == ops.CROSSOVER and len(parents) >= 2:
-            return self.gates.crossover_uses_both_parents(expression, parents[:2])
+        if operator == ops.CROSSOVER:
+            # a crossover child is only checkable against two distinct parents;
+            # one resolved parent used to skip the fusion gate entirely
+            distinct = list(dict.fromkeys(parents))
+            if len(distinct) < 2:
+                return GateOutcome(False, "unresolved_parent",
+                                   f"crossover needs two distinct parents, resolved {len(distinct)}")
+            return self.gates.crossover_uses_both_parents(expression, distinct[:2])
         return GateOutcome(True)
 
     # ---- the curve and the stop -----------------------------------------

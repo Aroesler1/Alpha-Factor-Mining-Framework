@@ -181,6 +181,9 @@ def main() -> int:
     parser.add_argument("--max-abs-corr", type=float, default=0.7)
     parser.add_argument("--max-factors", type=int, default=10)
     parser.add_argument("--min-cross-section", type=int, default=30)
+    parser.add_argument("--reuse-random", action="store_true",
+                        help="score the random_grammar_seed{N}.txt files already in --out-dir "
+                             "instead of drawing new ones, so a re-score keeps the same null")
     args = parser.parse_args()
 
     bars = pd.read_parquet(args.bars)
@@ -209,12 +212,17 @@ def main() -> int:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     for seed in range(args.seeds):
+        path = out_dir / f"random_grammar_seed{seed}.txt"
+        if args.reuse_random:
+            drawn = load_candidates(path)
+            print(f"reusing random-grammar-seed{seed} ({len(drawn)} from {path.name})", flush=True)
+            sets.append((f"random-grammar-seed{seed}", drawn))
+            continue
         print(f"drawing random-grammar-seed{seed} ...", flush=True)
         drawn = draw_random_set(seed, args.random_size, sonnet, evaluator)
         # Written out so the null is inspectable, and so each set can be re-scored
         # through sp500_score_mined_factors.py --model random-grammar-seed{N}
         # exactly like a real candidate file. Deterministic given the seed.
-        path = out_dir / f"random_grammar_seed{seed}.txt"
         path.write_text(f"# random-grammar-seed{seed}: {len(drawn)} expressions sampled from\n"
                         f"# ExpressionSanitizer's grammar, matched to the Sonnet set's structure.\n"
                         f"# Regenerate with scripts/sp500_run_baseline_comparison.py --seeds {args.seeds}\n"

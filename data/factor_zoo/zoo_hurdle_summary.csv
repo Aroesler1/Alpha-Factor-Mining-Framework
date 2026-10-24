@@ -1,0 +1,11 @@
+metric,value
+training_window,2001-04-02 to 2017-05-10
+complete_case_training_days,3808
+holdout_window,2018-01-02 to 2025-12-31
+random_max_critical_abs_t,3.5440532839907575
+bh_p_threshold,0.03385545211413874
+romano_wolf_critical_first_step,3.704042338876733
+romano_wolf_critical_last_step,3.5643084268645198
+max_abs_iid_t,10.70229498865874
+max_abs_nw_t,9.594413659416265
+median_abs_iid_over_nw_t,1.0235034753315526

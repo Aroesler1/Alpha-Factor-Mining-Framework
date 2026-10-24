@@ -41,6 +41,7 @@ from quantaalpha_us.factors.ic_panel import (  # noqa: E402
     ic_half_life,
     load_ic_table,
 )
+from quantaalpha_us.factors.label_clock import rows_known_by  # noqa: E402
 from quantaalpha_us.factors.multiple_testing import DEFAULT_NW_LAG, newey_west_tstats  # noqa: E402
 
 
@@ -69,8 +70,8 @@ def main() -> int:
         for kind in (LAGGED, CUMULATIVE):
             for h in HORIZONS:
                 key = (LAGGED, h) if (kind == CUMULATIVE and h == min(HORIZONS)) else (kind, h)
-                series = table.ic[key][expr]
-                series = series.loc[series.index <= cut].dropna()
+                # purge signal dates whose h-day outcome ends after the cut
+                series = rows_known_by(table.ic[key][expr], cut, key[1]).dropna()
                 if series.empty:
                     continue
                 curves[kind][h] = float(series.mean())

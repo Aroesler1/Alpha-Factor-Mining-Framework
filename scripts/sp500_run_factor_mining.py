@@ -176,12 +176,34 @@ def _build_prompt_batches(
     return prompts
 
 
+def select_models(llm_cfg: dict, live_call: bool) -> list[str]:
+    """Model names for the backend that will actually be called.
+
+    `primary_model` / `fallback_models` name models on the OpenAI-compatible
+    endpoint used by --live-call. The default path calls Claude (CLI or SDK),
+    which cannot serve those names, so it uses `claude_models` or the Claude
+    backend's default model instead.
+    """
+    if live_call:
+        models = [str(llm_cfg.get("primary_model", "kimi-k2.5"))]
+        fallback = llm_cfg.get("fallback_models")
+        if isinstance(fallback, list):
+            models.extend(str(m) for m in fallback)
+    else:
+        from quantaalpha_us.factors.llm_client import DEFAULT_MODEL
+
+        claude = llm_cfg.get("claude_models")
+        models = [str(m) for m in claude] if isinstance(claude, list) and claude else [DEFAULT_MODEL]
+    return [m for m in models if m]
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run US factor mining runtime with budget/sanitizer guards.")
     parser.add_argument("--config", default="configs/llm_sp500.yaml")
     parser.add_argument("--output-file", default=None)
     parser.add_argument("--prompt", action="append", default=[], help="Optional mining prompt(s)")
-    parser.add_argument("--live-call", action="store_true", help="Use OpenAI-compatible chat endpoint instead of dummy model")
+    parser.add_argument("--live-call", action="store_true", help="Use the OpenAI-compatible chat endpoint and the configured primary/fallback "
+                             "models instead of the Claude backend")
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
     parser.add_argument("--base-url-env", default="OPENAI_BASE_URL")
     return parser.parse_args()
@@ -213,11 +235,7 @@ def main() -> None:
         factors_per_request=factors_per_request,
     )
 
-    models = [str(llm_cfg.get("primary_model", "kimi-k2.5"))]
-    fallback = llm_cfg.get("fallback_models")
-    if isinstance(fallback, list):
-        models.extend(str(m) for m in fallback)
-    models = [m for m in models if m]
+    models = select_models(llm_cfg, args.live_call)
 
     budget = RunBudget(
         max_requests=int(budget_cfg.get("max_requests_per_run", 250)),
@@ -289,6 +307,10 @@ def main() -> None:
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(json.dumps({"output": str(out_path), "valid_factors": len(valid), "stats": stats.to_dict()}, indent=2))
+    if not valid:
+        # a run that produced nothing must fail, so the orchestrator does not
+        # record the mining stage as a success
+        raise SystemExit(f"factor mining produced no valid factors: {stats.halted_reason or 'no reason recorded'}")
 
 
 if __name__ == "__main__":

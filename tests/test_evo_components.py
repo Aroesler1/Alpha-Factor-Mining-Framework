@@ -662,3 +662,19 @@ def test_every_real_arm_has_archive_refusals_that_only_rounds_jsonl_knows(tmp_pa
     # Asserted over the set rather than per arm: a run still in progress has a
     # partially rebuilt rounds.jsonl, and this test should not fail for that.
     assert total_archive > 0, "no arm logged an archive refusal, so the tally proves nothing"
+
+
+def test_a_crossover_with_one_resolved_parent_is_rejected(gates):
+    from types import SimpleNamespace
+
+    from quantaalpha_us.evo import operators as ops
+    from quantaalpha_us.evo.runner import EvolutionRunner
+
+    runner = SimpleNamespace(gates=gates)
+    left, right = "TS_MEAN($close, 21)", "TS_STD($volume, 63)"
+    child = "TS_MEAN($close, 21) / (TS_STD($volume, 63) + 1e-8)"
+    one = EvolutionRunner._operator_check(runner, ops.CROSSOVER, child, [left])
+    assert not one.passed and one.gate == "unresolved_parent"
+    same = EvolutionRunner._operator_check(runner, ops.CROSSOVER, child, [left, left])
+    assert not same.passed and same.gate == "unresolved_parent"
+    assert EvolutionRunner._operator_check(runner, ops.CROSSOVER, child, [left, right]).passed

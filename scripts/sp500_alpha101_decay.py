@@ -36,6 +36,7 @@ for _p in (str(US_ROOT), str(US_ROOT.parent)):
         sys.path.insert(0, _p)
 
 from quantaalpha_us.factors.ic_panel import LAGGED, load_ic_table  # noqa: E402
+from quantaalpha_us.factors.label_clock import rows_known_by  # noqa: E402
 from quantaalpha_us.factors.multiple_testing import (  # noqa: E402
     DEFAULT_BLOCK,
     DEFAULT_NW_LAG,
@@ -120,7 +121,8 @@ def _bootstrap_mean_shift(pre: pd.DataFrame, post: pd.DataFrame, *,
 def summarise(name: str, ic: pd.DataFrame, cut: pd.Timestamp, *,
               lag: int, draws: int, block: int, seed: int,
               min_days_share: float = 0.9) -> tuple[pd.DataFrame, dict]:
-    pre_all = ic.loc[ic.index <= cut]
+    # pre-publication rows must have their one-day outcome finished by the cut
+    pre_all = rows_known_by(ic, cut)
     post_all = ic.loc[ic.index > cut]
 
     # Complete-case across every factor in the set, so a mean and its t come

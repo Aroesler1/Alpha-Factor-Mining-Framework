@@ -33,6 +33,7 @@ for _p in (str(US_ROOT), str(US_ROOT.parent)):
         sys.path.insert(0, _p)
 
 from quantaalpha_us.factors.ic_panel import LAGGED, load_ic_table  # noqa: E402
+from quantaalpha_us.factors.label_clock import rows_known_by  # noqa: E402
 from quantaalpha_us.factors.multiple_testing import (  # noqa: E402
     DEFAULT_NW_LAG,
     newey_west_tstats,
@@ -86,7 +87,7 @@ def main() -> int:
     for _, meta in members.iterrows():
         expr = meta["expression"]
         daily = ic[expr]
-        daily = daily.loc[daily.index <= cut].dropna()
+        daily = rows_known_by(daily, cut).dropna()
         # one observation per quarter is already non-overlapping under the
         # one-day forward label, so the HAC correction has nothing left to do;
         # lag 0 is the iid t and is reported as such

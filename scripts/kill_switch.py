@@ -74,6 +74,12 @@ def _apply_level(level: int, reason: str, cfg: dict, config_path: Path) -> dict[
         payload["pause_flag"] = str(pause_flag)
         return payload
 
+    # Levels 2 and 3 flatten the book. Pause first, so the next trade run is
+    # blocked even if the flatten call fails, and so a flattened account is not
+    # immediately re-entered by the scheduler.
+    pause_flag.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    payload["pause_flag"] = str(pause_flag)
+
     client = _build_client(cfg)
     cancel_resp = client.cancel_all_orders()
     close_resp = client.close_all_positions()
@@ -87,7 +93,8 @@ def _apply_level(level: int, reason: str, cfg: dict, config_path: Path) -> dict[
     return payload
 
 
-def _monitor(cfg: dict, config_path: Path, state_file: Path) -> dict[str, Any]:
+def _monitor(cfg: dict, config_path: Path, state_file: Path,
+             today: str | None = None) -> dict[str, Any]:
     kill_cfg = cfg.get("kill_switch", {}) if isinstance(cfg.get("kill_switch"), dict) else {}
     drawdown_cfg = kill_cfg.get("drawdown", {}) if isinstance(kill_cfg.get("drawdown"), dict) else {}
     daily_loss_cfg = kill_cfg.get("daily_loss", {}) if isinstance(kill_cfg.get("daily_loss"), dict) else {}
@@ -113,8 +120,21 @@ def _monitor(cfg: dict, config_path: Path, state_file: Path) -> dict[str, Any]:
 
     peak_equity_prev = float(state.get("peak_equity", equity) or equity)
     peak_equity = max(peak_equity_prev, equity)
-    prev_close_equity = float(state.get("previous_close_equity", equity) or equity)
-    days_seen = int(state.get("days_seen", 0)) + 1
+    # The daily-loss reference is the last equity seen on an EARLIER date, and
+    # the grace period counts dates, not runs. Rolling the reference on every
+    # run measured run-to-run loss, so a loss spread over several intraday runs
+    # never tripped the threshold.
+    today = today or datetime.now(timezone.utc).date().isoformat()
+    last_date = state.get("equity_date")
+    if last_date is not None and last_date != today:
+        prev_close_equity = float(state.get("equity", equity) or equity)
+        days_seen = int(state.get("days_seen", 0)) + 1
+    elif last_date == today:
+        prev_close_equity = float(state.get("previous_close_equity", equity) or equity)
+        days_seen = int(state.get("days_seen", 1))
+    else:
+        prev_close_equity = float(state.get("previous_close_equity", equity) or equity)
+        days_seen = int(state.get("days_seen", 0)) + 1
 
     drawdown = (peak_equity - equity) / peak_equity if peak_equity > 0 else 0.0
     daily_loss = max((prev_close_equity - equity) / prev_close_equity, 0.0) if prev_close_equity > 0 else 0.0
@@ -132,7 +152,8 @@ def _monitor(cfg: dict, config_path: Path, state_file: Path) -> dict[str, Any]:
         "last_update_utc": datetime.now(timezone.utc).isoformat(),
         "equity": equity,
         "peak_equity": peak_equity,
-        "previous_close_equity": equity,
+        "equity_date": today,
+        "previous_close_equity": prev_close_equity,
         "drawdown": drawdown,
         "daily_loss": daily_loss,
         "days_seen": days_seen,

@@ -39,6 +39,15 @@ class PreTradeReport:
     passed: bool
     checks: dict[str, CheckOutcome]
 
+    # Checks that no operator flag may override: an engaged kill switch and
+    # trading names outside the index universe.
+    NON_BYPASSABLE = ("PT-03_universe", "PT-07_kill_switch")
+
+    def hard_failures(self) -> list[str]:
+        """Failed checks that `--allow-risk-fail` must not wave through."""
+        return [name for name in self.NON_BYPASSABLE
+                if name in self.checks and not self.checks[name].passed]
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "passed": self.passed,
