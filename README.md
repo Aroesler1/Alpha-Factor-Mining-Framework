@@ -35,11 +35,12 @@ The [audit history](docs/audit_history.md) lists what changed.
   Sonnet and 0.793 for Opus 5. The smallest raw p of the five comparisons is 0.026
   (Sonnet loop with full vs fitness-only feedback), which becomes 0.13 after Holm
   correction. Source: [evo_comparison_audit.csv](reports/evo_comparison_audit.csv).
-- **One-shot LLM factors look like random formulas.** The best in-sample |t| on
-  2000-2017 was 6.74 for Sonnet 5 and 7.03 for Fable 5, against 8.47 for Alpha101 and
-  6.49 to 11.35 for five same-sized random-grammar sets. On 2018-2025 the selected
-  Alpha101 factors kept a median 60.9% of their in-sample IC, against 37.3% for Sonnet 5
-  and 28.1% for Fable 5. Source: [baseline_comparison.csv](reports/baseline_comparison.csv).
+- **One-shot LLM factors are no stronger than random formulas in sample.** The best
+  in-sample |t| on 2000-2017 was 6.74 for Sonnet 5 and 7.03 for Fable 5, against 8.47
+  for Alpha101 and 6.49 to 11.35 for five same-sized random-grammar sets. They held up
+  better out of sample: on 2018-2025 the selected factors kept a median 37.3% (Sonnet 5)
+  and 28.1% (Fable 5) of their in-sample IC, against at most 21.7% for the random sets
+  and 60.9% for Alpha101. Source: [baseline_comparison.csv](reports/baseline_comparison.csv).
 - **Factor-zoo correction.** I pooled 401 factors: 85 from LLMs, 266 random and 50
   from Alpha101. A Romano-Wolf stepdown keeps 24% of the LLM factors, 30% of the
   random ones and 52% of Alpha101. Source: [rw_survivors.csv](reports/rw_survivors.csv).
@@ -61,7 +62,10 @@ The [audit history](docs/audit_history.md) lists what changed.
 3. **Proposers.** Claude Sonnet 5 or Opus 5 runs through the Claude Code CLI, or a
    genetic-programming control makes random typed tree edits. Four operators
    (explore, mutate, crossover, simplify) and a short reflection memory run on three
-   islands: price trend, liquidity and volume, and fundamentals.
+   islands: price trend, liquidity and volume, and fundamentals. The six search arms
+   are a loop and a one-shot set for each of Sonnet 5 and Opus 5, a Sonnet 5 loop that
+   sees only its fitness score, and the GP loop. The one-shot baseline comparison uses
+   two further candidate sets written by Claude Sonnet 5 and Claude Fable 5.
 4. **Gates and fitness.** Cheap checks run first: syntax, complexity, shared
    sub-expressions with Alpha101 or the archive, coverage, and rank correlation with
    archive members. Fitness is the block-bootstrap |t| of the daily rank IC on
@@ -85,8 +89,9 @@ The [audit history](docs/audit_history.md) lists what changed.
 
 - The archives, niches and gate thresholds come from searches run on the old panel,
   whose selection labels also crossed window cutoffs. The rescore fixes the scores, not
-  the search path, so the holdout figures are not clean out-of-sample evidence. The
-  Sonnet 5 loop stopped in round 8 of 8 after network failures.
+  the search path, so the holdout figures are not clean out-of-sample evidence. Network
+  failures cut the Sonnet 5 loop short in its last round, so it has 7 complete rounds
+  of 8.
 - Split-adjusted price levels carry information about later splits. Ratios and returns
   are unaffected, but a formula that ranks a raw price level (for example
   `RANK($close)`) can still look ahead.
